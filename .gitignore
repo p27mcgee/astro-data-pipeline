@@ -1,0 +1,99 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfvars
+!terraform/dev.tfvars.example
+!terraform/prod.tfvars.example
+
+# Java / Gradle
+.gradle/
+build/
+target/
+*.jar
+*.war
+*.nar
+*.class
+*.log
+*.tmp
+.settings/
+.project
+.classpath
+bin/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Kubernetes
+kubeconfig
+*.kubeconfig
+
+# AWS
+.aws/
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+venv/
+env/
+
+# Airflow
+airflow.cfg
+airflow.db
+logs/
+*.pid
+
+# Data files
+*.fits
+*.fits.gz
+data/raw/
+data/processed/
+data/archive/
+
+# Secrets
+secrets/
+*.key
+*.crt
+.env
+.env.local
+
+# Backup files
+*.bak
+*.backup
+
+# Performance test results
+performance-results/
+benchmarks/
+*_performance_results.json
+*_load_test_results.json
+*.cast
+performance_test*.txt
+simple_load_test_results.json
+comprehensive_performance_results.json
+demo_performance_results.json
+
+# Documentation build
+site/
+docs/build/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

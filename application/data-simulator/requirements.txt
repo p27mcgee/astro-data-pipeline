@@ -1,0 +1,45 @@
+# FITS file handling
+astropy>=5.3.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Image generation and processing
+pillow>=10.0.0
+scikit-image>=0.21.0
+opencv-python>=4.8.0.76
+
+# Astronomical calculations
+pyephem>=4.1.4
+astroquery>=0.4.6
+astropy-healpix>=0.7
+
+# Data generation
+faker>=19.0.0
+names>=0.3.0
+
+# Configuration and utilities
+pyyaml>=6.0
+click>=8.1.0
+tqdm>=4.66.0
+colorama>=0.4.6
+
+# AWS integration
+boto3>=1.28.0
+botocore>=1.31.0
+
+# Database connectivity (optional)
+psycopg2-binary>=2.9.7
+sqlalchemy>=2.0.0
+
+# Logging and monitoring
+structlog>=23.0.0
+prometheus-client>=0.17.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Development tools
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.5.0

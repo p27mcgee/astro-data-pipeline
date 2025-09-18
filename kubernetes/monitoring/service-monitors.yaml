@@ -1,0 +1,261 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: image-processor-monitor
+  namespace: astro-pipeline
+  labels:
+    app: image-processor
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: image-processor-service
+  endpoints:
+  - port: http
+    interval: 15s
+    path: /actuator/prometheus
+    scheme: http
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      separator: ;
+      regex: ^(fits_processing_.*|jvm_.*|process_.*|http_server_requests_.*|spring_.*|tomcat_.*|system_cpu_usage|system_load_average_1m|disk_.*|memory_.*|astronomical_.*)$
+      targetLabel: __tmp_keep
+      replacement: keep
+    - sourceLabels: [__tmp_keep]
+      separator: ;
+      regex: ^keep$
+      targetLabel: __tmp_drop
+      replacement: ""
+    - regex: __tmp_.*
+      action: labeldrop
+  namespaceSelector:
+    matchNames:
+    - astro-pipeline
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: catalog-service-monitor
+  namespace: astro-pipeline
+  labels:
+    app: catalog-service
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: catalog-service
+  endpoints:
+  - port: http
+    interval: 15s
+    path: /actuator/prometheus
+    scheme: http
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      separator: ;
+      regex: ^(catalog_.*|jvm_.*|process_.*|http_server_requests_.*|spring_.*|tomcat_.*|system_cpu_usage|system_load_average_1m|postgresql_.*|hikaricp_.*)$
+      targetLabel: __tmp_keep
+      replacement: keep
+    - sourceLabels: [__tmp_keep]
+      separator: ;
+      regex: ^keep$
+      targetLabel: __tmp_drop
+      replacement: ""
+    - regex: __tmp_.*
+      action: labeldrop
+  namespaceSelector:
+    matchNames:
+    - astro-pipeline
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: prometheus-monitor
+  namespace: astro-pipeline
+  labels:
+    app: prometheus
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: prometheus
+  endpoints:
+  - port: web
+    interval: 30s
+    path: /metrics
+    scheme: http
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - astro-pipeline
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: grafana-monitor
+  namespace: astro-pipeline
+  labels:
+    app: grafana
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: grafana
+  endpoints:
+  - port: grafana
+    interval: 30s
+    path: /metrics
+    scheme: http
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - astro-pipeline
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: alertmanager-monitor
+  namespace: astro-pipeline
+  labels:
+    app: alertmanager
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: alertmanager
+  endpoints:
+  - port: alertmanager
+    interval: 30s
+    path: /metrics
+    scheme: http
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - astro-pipeline
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kubernetes-resources
+  namespace: astro-pipeline
+  labels:
+    app: prometheus
+    component: monitoring
+spec:
+  groups:
+  - name: kubernetes-resources
+    rules:
+    - alert: KubePodCrashLooping
+      annotations:
+        description: 'Pod {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) is in waiting state (reason: "CrashLoopBackOff").'
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping
+        summary: Pod is crash looping.
+      expr: max_over_time(kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff", job="kube-state-metrics"}[5m]) >= 1
+      for: 15m
+      labels:
+        severity: warning
+        
+    - alert: KubePodNotReady
+      annotations:
+        description: Pod {{ $labels.namespace }}/{{ $labels.pod }} has been in a non-ready state for longer than 15 minutes.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodnotready
+        summary: Pod has been in a non-ready state for more than 15 minutes.
+      expr: sum by (namespace, pod, cluster) (max by(namespace, pod, cluster) (kube_pod_status_phase{job="kube-state-metrics", phase=~"Pending|Unknown|Failed"}) * on(namespace, pod, cluster) group_left(owner_kind) topk by(namespace, pod, cluster) (1, max by(namespace, pod, owner_kind, cluster) (kube_pod_owner{owner_kind!="Job"}))) > 0
+      for: 15m
+      labels:
+        severity: warning
+        
+    - alert: KubeDeploymentGenerationMismatch
+      annotations:
+        description: Deployment generation for {{ $labels.namespace }}/{{ $labels.deployment }} does not match, this indicates that the Deployment has failed but has not been rolled back.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubedeploymentgenerationmismatch
+        summary: Deployment generation mismatch due to possible roll-back
+      expr: kube_deployment_status_generation{job="kube-state-metrics"} != kube_deployment_metadata_generation{job="kube-state-metrics"}
+      for: 15m
+      labels:
+        severity: warning
+        
+    - alert: KubeDeploymentReplicasMismatch
+      annotations:
+        description: Deployment {{ $labels.namespace }}/{{ $labels.deployment }} has not matched the expected number of replicas for longer than 15 minutes.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubedeploymentreplicasmismatch
+        summary: Deployment has not matched the expected number of replicas.
+      expr: (kube_deployment_spec_replicas{job="kube-state-metrics"} > kube_deployment_status_replicas_available{job="kube-state-metrics"}) and (changes(kube_deployment_status_replicas_updated{job="kube-state-metrics"}[10m]) == 0)
+      for: 15m
+      labels:
+        severity: warning
+        
+    - alert: KubeJobCompletion
+      annotations:
+        description: Job {{ $labels.namespace }}/{{ $labels.job_name }} is taking more than 12 hours to complete.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubejobcompletion
+        summary: Job did not complete in time
+      expr: kube_job_spec_completions{job="kube-state-metrics"} - kube_job_status_succeeded{job="kube-state-metrics"}  > 0
+      for: 12h
+      labels:
+        severity: warning
+        
+    - alert: KubeJobFailed
+      annotations:
+        description: Job {{ $labels.namespace }}/{{ $labels.job_name }} failed to complete. Removing failed job after investigation should clear this alert.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubejobfailed
+        summary: Job failed to complete.
+      expr: kube_job_failed{job="kube-state-metrics"}  > 0
+      for: 15m
+      labels:
+        severity: warning
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: node-exporter-rules
+  namespace: astro-pipeline
+  labels:
+    app: prometheus
+    component: monitoring
+spec:
+  groups:
+  - name: node-exporter
+    rules:
+    - alert: NodeFilesystemSpaceFillingUp
+      annotations:
+        description: Filesystem on {{ $labels.device }} at {{ $labels.instance }} has only {{ printf "%.2f" $value }}% available space left and is filling up.
+        summary: Filesystem is predicted to run out of space within the next 24 hours.
+      expr: (node_filesystem_avail_bytes{job="node-exporter",fstype!=""} / node_filesystem_size_bytes{job="node-exporter",fstype!=""} * 100 < 40 and predict_linear(node_filesystem_avail_bytes{job="node-exporter",fstype!=""}[6h], 24*60*60) < 0 and node_filesystem_readonly{job="node-exporter",fstype!=""} == 0)
+      for: 1h
+      labels:
+        severity: warning
+        
+    - alert: NodeFilesystemSpaceFillingUp
+      annotations:
+        description: Filesystem on {{ $labels.device }} at {{ $labels.instance }} has only {{ printf "%.2f" $value }}% available space left and is filling up fast.
+        summary: Filesystem is predicted to run out of space within the next 4 hours.
+      expr: (node_filesystem_avail_bytes{job="node-exporter",fstype!=""} / node_filesystem_size_bytes{job="node-exporter",fstype!=""} * 100 < 20 and predict_linear(node_filesystem_avail_bytes{job="node-exporter",fstype!=""}[6h], 4*60*60) < 0 and node_filesystem_readonly{job="node-exporter",fstype!=""} == 0)
+      for: 1h
+      labels:
+        severity: critical
+        
+    - alert: NodeFilesystemAlmostOutOfSpace
+      annotations:
+        description: Filesystem on {{ $labels.device }} at {{ $labels.instance }} has only {{ printf "%.2f" $value }}% available space left.
+        summary: Filesystem has less than 5% space left.
+      expr: (node_filesystem_avail_bytes{job="node-exporter",fstype!=""} / node_filesystem_size_bytes{job="node-exporter",fstype!=""} * 100 < 5 and node_filesystem_readonly{job="node-exporter",fstype!=""} == 0)
+      for: 30m
+      labels:
+        severity: warning
+        
+    - alert: NodeFilesystemAlmostOutOfSpace
+      annotations:
+        description: Filesystem on {{ $labels.device }} at {{ $labels.instance }} has only {{ printf "%.2f" $value }}% available space left.
+        summary: Filesystem has less than 3% space left.
+      expr: (node_filesystem_avail_bytes{job="node-exporter",fstype!=""} / node_filesystem_size_bytes{job="node-exporter",fstype!=""} * 100 < 3 and node_filesystem_readonly{job="node-exporter",fstype!=""} == 0)
+      for: 30m
+      labels:
+        severity: critical

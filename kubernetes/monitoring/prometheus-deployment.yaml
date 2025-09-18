@@ -1,0 +1,381 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: astro-pipeline
+  labels:
+    app: prometheus
+    component: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      scrape_timeout: 10s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: astro-data-pipeline
+        environment: production
+        
+    rule_files:
+      - "/etc/prometheus/rules/*.yml"
+      
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+              - "alertmanager:9093"
+              
+    scrape_configs:
+      # Prometheus self-monitoring
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+        
+      # Kubernetes API server
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+          - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: default;kubernetes;https
+            
+      # Kubernetes nodes
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics
+            
+      # Kubernetes pods with prometheus.io/scrape=true annotation
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+            
+      # Astro pipeline specific services
+      - job_name: 'image-processor'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - astro-pipeline
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: image-processor-service
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: http
+        metrics_path: /actuator/prometheus
+        scrape_interval: 10s
+        
+      - job_name: 'catalog-service'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - astro-pipeline
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: keep
+            regex: catalog-service
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: http
+        metrics_path: /actuator/prometheus
+        scrape_interval: 10s
+        
+      # Node exporter
+      - job_name: 'node-exporter'
+        kubernetes_sd_configs:
+          - role: endpoints
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_endpoints_name]
+            regex: 'node-exporter'
+            action: keep
+          
+      # cAdvisor (container metrics)
+      - job_name: 'kubernetes-cadvisor'
+        kubernetes_sd_configs:
+          - role: node
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: astro-pipeline
+  labels:
+    app: prometheus
+    component: monitoring
+data:
+  astro-pipeline.yml: |
+    groups:
+    - name: astro-pipeline.rules
+      rules:
+      # Processing performance metrics
+      - alert: HighProcessingLatency
+        expr: histogram_quantile(0.95, rate(fits_processing_duration_seconds_bucket[5m])) > 300
+        for: 2m
+        labels:
+          severity: warning
+          service: image-processor
+        annotations:
+          summary: "High FITS processing latency detected"
+          description: "95th percentile processing time is {{ $value }}s for {{ $labels.instance }}"
+          
+      - alert: ProcessingFailureRate
+        expr: rate(fits_processing_errors_total[5m]) / rate(fits_processing_total[5m]) > 0.1
+        for: 1m
+        labels:
+          severity: critical
+          service: image-processor
+        annotations:
+          summary: "High processing failure rate"
+          description: "Processing failure rate is {{ $value | humanizePercentage }} for {{ $labels.instance }}"
+          
+      # Resource utilization alerts
+      - alert: HighMemoryUsage
+        expr: (container_memory_working_set_bytes{pod=~"image-processor-.*|catalog-service-.*"} / container_spec_memory_limit_bytes) > 0.9
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage in {{ $labels.pod }}"
+          description: "Memory usage is {{ $value | humanizePercentage }} in pod {{ $labels.pod }}"
+          
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{pod=~"image-processor-.*|catalog-service-.*"}[5m]) / (container_spec_cpu_quota / container_spec_cpu_period) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage in {{ $labels.pod }}"
+          description: "CPU usage is {{ $value | humanizePercentage }} in pod {{ $labels.pod }}"
+          
+      # Database performance alerts
+      - alert: DatabaseConnections
+        expr: postgresql_connections_active{database="astro_catalog"} / postgresql_connections_max > 0.8
+        for: 2m
+        labels:
+          severity: warning
+          service: catalog-service
+        annotations:
+          summary: "High database connection usage"
+          description: "Database connections are {{ $value | humanizePercentage }} of maximum for {{ $labels.database }}"
+          
+      - alert: SlowDatabaseQueries
+        expr: avg(rate(catalog_query_duration_seconds_sum[5m]) / rate(catalog_query_duration_seconds_count[5m])) > 1.0
+        for: 3m
+        labels:
+          severity: warning
+          service: catalog-service
+        annotations:
+          summary: "Slow database queries detected"
+          description: "Average query time is {{ $value }}s"
+          
+      # Batch job monitoring
+      - alert: BatchJobFailure
+        expr: increase(kube_job_status_failed[1h]) > 0
+        labels:
+          severity: critical
+          component: batch-job
+        annotations:
+          summary: "Batch job failure detected"
+          description: "Job {{ $labels.job_name }} has failed"
+          
+      - alert: BatchJobStuck
+        expr: (time() - kube_job_status_start_time) > 7200 and kube_job_status_active > 0
+        labels:
+          severity: warning
+          component: batch-job
+        annotations:
+          summary: "Batch job running for too long"
+          description: "Job {{ $labels.job_name }} has been running for over 2 hours"
+          
+      # Storage and I/O alerts  
+      - alert: S3ErrorRate
+        expr: rate(s3_requests_errors_total[5m]) / rate(s3_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: storage
+        annotations:
+          summary: "High S3 error rate"
+          description: "S3 error rate is {{ $value | humanizePercentage }}"
+          
+      - alert: DiskSpaceUsage
+        expr: (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk usage on {{ $labels.instance }}"
+          description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: astro-pipeline
+  labels:
+    app: prometheus
+    component: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+        component: monitoring
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      serviceAccountName: prometheus-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v2.47.0
+        args:
+          - '--config.file=/etc/prometheus/prometheus.yml'
+          - '--storage.tsdb.path=/prometheus/'
+          - '--web.console.libraries=/etc/prometheus/console_libraries'
+          - '--web.console.templates=/etc/prometheus/consoles'
+          - '--storage.tsdb.retention.time=15d'
+          - '--storage.tsdb.retention.size=10GB'
+          - '--web.enable-lifecycle'
+          - '--web.enable-admin-api'
+          - '--log.level=info'
+        ports:
+        - name: web
+          containerPort: 9090
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        volumeMounts:
+        - name: prometheus-config-volume
+          mountPath: /etc/prometheus/
+          readOnly: true
+        - name: prometheus-rules-volume
+          mountPath: /etc/prometheus/rules/
+          readOnly: true
+        - name: prometheus-storage-volume
+          mountPath: /prometheus/
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: web
+          initialDelaySeconds: 30
+          timeoutSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: web
+          initialDelaySeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+      volumes:
+      - name: prometheus-config-volume
+        configMap:
+          name: prometheus-config
+      - name: prometheus-rules-volume
+        configMap:
+          name: prometheus-rules
+      - name: prometheus-storage-volume
+        emptyDir:
+          sizeLimit: "15Gi"
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        node.kubernetes.io/workload: general
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: astro-pipeline
+  labels:
+    app: prometheus
+    component: monitoring
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+spec:
+  type: ClusterIP
+  ports:
+  - name: web
+    port: 9090
+    targetPort: web
+    protocol: TCP
+  selector:
+    app: prometheus

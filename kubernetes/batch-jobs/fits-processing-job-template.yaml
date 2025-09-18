@@ -1,0 +1,300 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fits-processing-batch
+  namespace: astro-pipeline
+  labels:
+    app: fits-processing
+    component: batch-job
+    tier: processing
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 7200  # 2 hours
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        app: fits-processing
+        component: batch-job
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: astro-pipeline-sa
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: fits-processor
+        image: astro-image-processor:1.0.0
+        imagePullPolicy: Always
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            echo "Starting batch FITS processing job"
+            java -cp /app org.stsci.astro.processor.batch.BatchProcessingRunner \
+              --input-bucket=${INPUT_BUCKET} \
+              --input-prefix=${INPUT_PREFIX} \
+              --output-bucket=${OUTPUT_BUCKET} \
+              --batch-size=${BATCH_SIZE} \
+              --max-files=${MAX_FILES} \
+              --processing-type=${PROCESSING_TYPE}
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "batch,prod"
+        - name: INPUT_BUCKET
+          value: "astro-data-pipeline-raw-data-prod"
+        - name: INPUT_PREFIX
+          value: "fits/"
+        - name: OUTPUT_BUCKET
+          value: "astro-data-pipeline-processed-data-prod"
+        - name: BATCH_SIZE
+          value: "50"
+        - name: MAX_FILES
+          value: "1000"
+        - name: PROCESSING_TYPE
+          value: "FULL_CALIBRATION"
+        - name: JOB_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        envFrom:
+        - configMapRef:
+            name: astro-pipeline-config
+        - secretRef:
+            name: astro-pipeline-secrets
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        volumeMounts:
+        - name: processing-workspace
+          mountPath: /workspace
+        - name: tmp-volume
+          mountPath: /tmp
+      - name: monitoring-sidecar
+        image: prom/node-exporter:latest
+        ports:
+        - name: metrics
+          containerPort: 9100
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+        command:
+          - /bin/node_exporter
+          - --path.procfs=/host/proc
+          - --path.sysfs=/host/sys
+          - --collector.filesystem.ignored-mount-points
+          - ^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)
+      volumes:
+      - name: processing-workspace
+        emptyDir:
+          sizeLimit: "10Gi"
+      - name: tmp-volume
+        emptyDir:
+          sizeLimit: "2Gi"
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        node.kubernetes.io/workload: compute
+      tolerations:
+      - key: "compute-workload"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node.kubernetes.io/workload
+                operator: In
+                values: ["compute", "memory-intensive"]
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nightly-processing
+  namespace: astro-pipeline
+  labels:
+    app: nightly-processing
+    component: scheduled-job
+spec:
+  schedule: "0 2 * * *"  # Every day at 2 AM UTC
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app: nightly-processing
+        component: scheduled-job
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 14400  # 4 hours
+      template:
+        metadata:
+          labels:
+            app: nightly-processing
+            component: scheduled-job
+        spec:
+          serviceAccountName: astro-pipeline-sa
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+          - name: nightly-processor
+            image: astro-image-processor:1.0.0
+            command: ["/bin/sh"]
+            args:
+              - -c
+              - |
+                echo "Starting nightly processing job at $(date)"
+                # Process files from the last 24 hours
+                START_DATE=$(date -d '1 day ago' '+%Y-%m-%d')
+                END_DATE=$(date '+%Y-%m-%d')
+                
+                java -cp /app org.stsci.astro.processor.batch.NightlyProcessor \
+                  --start-date=${START_DATE} \
+                  --end-date=${END_DATE} \
+                  --input-bucket=${INPUT_BUCKET} \
+                  --output-bucket=${OUTPUT_BUCKET} \
+                  --parallel-jobs=${PARALLEL_JOBS}
+                
+                echo "Nightly processing completed at $(date)"
+            env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "batch,prod,nightly"
+            - name: INPUT_BUCKET
+              value: "astro-data-pipeline-raw-data-prod"
+            - name: OUTPUT_BUCKET
+              value: "astro-data-pipeline-processed-data-prod"
+            - name: PARALLEL_JOBS
+              value: "5"
+            envFrom:
+            - configMapRef:
+                name: astro-pipeline-config
+            - secretRef:
+                name: astro-pipeline-secrets
+            resources:
+              requests:
+                memory: "1Gi"
+                cpu: "500m"
+              limits:
+                memory: "4Gi"
+                cpu: "2000m"
+            volumeMounts:
+            - name: processing-workspace
+              mountPath: /workspace
+          volumes:
+          - name: processing-workspace
+            emptyDir:
+              sizeLimit: "5Gi"
+          nodeSelector:
+            kubernetes.io/arch: amd64
+            node.kubernetes.io/workload: general
+          tolerations:
+          - key: "compute-workload"
+            operator: "Equal"
+            value: "true"
+            effect: "NoSchedule"
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: catalog-maintenance
+  namespace: astro-pipeline
+  labels:
+    app: catalog-maintenance
+    component: maintenance-job
+spec:
+  schedule: "0 6 * * 0"  # Every Sunday at 6 AM UTC
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app: catalog-maintenance
+        component: maintenance-job
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600  # 1 hour
+      template:
+        metadata:
+          labels:
+            app: catalog-maintenance
+            component: maintenance-job
+        spec:
+          serviceAccountName: astro-pipeline-sa
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+          - name: catalog-maintenance
+            image: astro-catalog-service:1.0.0
+            command: ["/bin/sh"]
+            args:
+              - -c
+              - |
+                echo "Starting catalog maintenance at $(date)"
+                
+                # Run database maintenance tasks
+                java -cp /app org.stsci.astro.catalog.maintenance.CatalogMaintenance \
+                  --cleanup-transients \
+                  --update-statistics \
+                  --vacuum-analyze \
+                  --check-consistency
+                
+                echo "Catalog maintenance completed at $(date)"
+            env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "maintenance,prod"
+            - name: MAINTENANCE_MODE
+              value: "full"
+            envFrom:
+            - configMapRef:
+                name: astro-pipeline-config
+            - secretRef:
+                name: astro-pipeline-secrets
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "250m"
+              limits:
+                memory: "2Gi"
+                cpu: "1000m"
+          nodeSelector:
+            kubernetes.io/arch: amd64
+            node.kubernetes.io/workload: general

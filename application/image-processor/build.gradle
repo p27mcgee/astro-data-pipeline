@@ -1,0 +1,267 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.1.5'
+    id 'io.spring.dependency-management' version '1.1.3'
+    id 'jacoco'
+    id 'org.sonarqube' version '4.4.1.3373'
+}
+
+group = 'org.stsci.astro'
+version = '1.0.0'
+sourceCompatibility = '17'
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://repo1.maven.org/maven2/' }
+}
+
+ext {
+    springCloudVersion = '2022.0.4'
+    testcontainersVersion = '1.19.1'
+    awsSdkVersion = '2.21.29'
+    nomTamVersion = '1.20.0'
+    micrometerVersion = '1.12.0'
+}
+
+dependencies {
+    // Spring Boot Core
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-batch'
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+    
+    // Spring Cloud AWS
+    implementation 'io.awspring.cloud:spring-cloud-aws-starter-s3:3.0.3'
+    implementation 'io.awspring.cloud:spring-cloud-aws-starter-secrets-manager:3.0.3'
+    
+    // AWS SDK
+    implementation platform("software.amazon.awssdk:bom:${awsSdkVersion}")
+    implementation 'software.amazon.awssdk:s3'
+    implementation 'software.amazon.awssdk:secretsmanager'
+    implementation 'software.amazon.awssdk:cloudwatch'
+    
+    // Database
+    implementation 'org.postgresql:postgresql:42.6.0'
+    implementation 'com.zaxxer:HikariCP:5.0.1'
+    implementation 'org.flywaydb:flyway-core'
+    
+    // FITS File Processing
+    implementation "gov.nasa.gsfc.heasarc:nom-tam-fits:${nomTamVersion}"
+    implementation 'org.apache.commons:commons-math3:3.6.1'
+    implementation 'org.apache.commons:commons-imaging:1.0.0-alpha5'
+    
+    // Image Processing
+    implementation 'org.bytedeco:javacv:1.5.9'
+    implementation 'org.bytedeco:opencv:4.7.0-1.5.9'
+    implementation 'org.bytedeco:javacv-platform:1.5.9'
+    
+    // Metrics and Monitoring
+    implementation "io.micrometer:micrometer-registry-cloudwatch2:${micrometerVersion}"
+    implementation "io.micrometer:micrometer-registry-prometheus:${micrometerVersion}"
+    implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+    implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
+    
+    // JSON Processing
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+    
+    // Utilities
+    implementation 'org.apache.commons:commons-lang3:3.13.0'
+    implementation 'org.apache.commons:commons-collections4:4.4'
+    implementation 'com.google.guava:guava:32.1.3-jre'
+    
+    // Async Processing
+    implementation 'org.springframework:spring-context'
+    implementation 'org.springframework.retry:spring-retry'
+    
+    // Configuration
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    
+    // Documentation
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.2.0'
+    
+    // Testing
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.batch:spring-batch-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'com.h2database:h2'
+    testImplementation "org.testcontainers:junit-jupiter:${testcontainersVersion}"
+    testImplementation "org.testcontainers:postgresql:${testcontainersVersion}"
+    testImplementation "org.testcontainers:localstack:${testcontainersVersion}"
+    testImplementation 'com.github.tomakehurst:wiremock-jre8:2.35.0'
+    testImplementation 'org.awaitility:awaitility:4.2.0'
+    testImplementation 'org.assertj:assertj-core'
+    testImplementation 'org.mockito:mockito-core'
+    testImplementation 'org.mockito:mockito-junit-jupiter'
+    
+    // Test Utilities
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+        mavenBom "org.testcontainers:testcontainers-bom:${testcontainersVersion}"
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    systemProperty 'spring.profiles.active', 'test'
+    
+    // Exclude integration tests from unit test task
+    exclude '**/*IntegrationTest*'
+    exclude '**/*IT*'
+    
+    finalizedBy jacocoTestReport
+}
+
+// Integration Tests
+task integrationTest(type: Test) {
+    useJUnitPlatform()
+    systemProperty 'spring.profiles.active', 'integration-test'
+    
+    // Only run integration tests
+    include '**/*IntegrationTest*'
+    include '**/*IT*'
+    
+    // Longer timeout for integration tests
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
+    
+    finalizedBy jacocoTestReport
+}
+
+// Performance Tests
+task performanceTest(type: Test) {
+    useJUnitPlatform()
+    systemProperty 'spring.profiles.active', 'performance-test'
+    
+    include '**/*PerformanceTest*'
+    include '**/*LoadTest*'
+    
+    maxHeapSize = "2g"
+    jvmArgs '-XX:+UseG1GC', '-XX:MaxGCPauseMillis=200'
+    
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+    }
+}
+
+jacoco {
+    toolVersion = "0.8.8"
+}
+
+jacocoTestReport {
+    dependsOn test, integrationTest
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+    
+    executionData files("$buildDir/jacoco/test.exec", "$buildDir/jacoco/integrationTest.exec")
+    
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it, exclude: [
+                '**/config/**',
+                '**/dto/**',
+                '**/entity/**',
+                '**/*Application*',
+                '**/*Config*'
+            ])
+        }))
+    }
+}
+
+sonarqube {
+    properties {
+        property "sonar.projectKey", "astro-data-pipeline-image-processor"
+        property "sonar.projectName", "Astronomical Data Pipeline - Image Processor"
+        property "sonar.coverage.jacoco.xmlReportPaths", "${buildDir}/reports/jacoco/jacocoTestReport/jacocoTestReport.xml"
+        property "sonar.java.coveragePlugin", "jacoco"
+        property "sonar.coverage.exclusions", "**/config/**,**/dto/**,**/entity/**,**/*Application*,**/*Config*"
+    }
+}
+
+// Docker build task
+task buildDocker(type: Exec) {
+    dependsOn build
+    workingDir '.'
+    commandLine 'docker', 'build', '-t', "astro-image-processor:${version}", '.'
+}
+
+// Custom task to generate FITS test data
+task generateTestData(type: JavaExec) {
+    mainClass = 'org.stsci.astro.processor.util.TestDataGenerator'
+    classpath = sourceSets.main.runtimeClasspath
+    args = ['--output-dir', 'src/test/resources/fits-data', '--count', '10']
+}
+
+// Performance profiling task
+task profile(type: JavaExec) {
+    mainClass = 'org.stsci.astro.processor.ImageProcessorApplication'
+    classpath = sourceSets.main.runtimeClasspath
+    systemProperty 'spring.profiles.active', 'profiling'
+    jvmArgs '-XX:+FlightRecorder', 
+            '-XX:StartFlightRecording=duration=300s,filename=image-processor-profile.jfr',
+            '-XX:+UnlockExperimentalVMOptions',
+            '-XX:+UseG1GC'
+}
+
+// Dependency vulnerability check
+task dependencyCheck(type: Exec) {
+    commandLine 'gradle', 'dependencyCheckAnalyze'
+}
+
+// Clean task customization
+clean {
+    delete 'logs'
+    delete 'image-processor-profile.jfr'
+}
+
+// Build optimization
+compileJava {
+    options.compilerArgs += ['-parameters']
+    options.encoding = 'UTF-8'
+}
+
+// Spring Boot configuration
+springBoot {
+    buildInfo()
+    mainClass = 'org.stsci.astro.processor.ImageProcessorApplication'
+}
+
+// Application properties for build
+ext {
+    dockerRegistry = project.findProperty('dockerRegistry') ?: 'localhost:5000'
+    imageTag = project.findProperty('imageTag') ?: version
+}
+
+// Multi-stage build support
+task buildMultiArch(type: Exec) {
+    dependsOn build
+    workingDir '.'
+    commandLine 'docker', 'buildx', 'build', 
+                '--platform', 'linux/amd64,linux/arm64',
+                '-t', "${dockerRegistry}/astro-image-processor:${imageTag}",
+                '--push', '.'
+}

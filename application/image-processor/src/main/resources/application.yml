@@ -1,0 +1,241 @@
+spring:
+  application:
+    name: astro-image-processor
+    version: ${BUILD_VERSION:1.0.0}
+
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/astro_catalog}
+    username: ${DATABASE_USERNAME:astro_user}
+    password: ${DATABASE_PASSWORD:astro_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: ImageProcessorHikariPool
+      maximum-pool-size: ${DATABASE_MAX_POOL_SIZE:10}
+      minimum-idle: ${DATABASE_MIN_IDLE:2}
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:validate}
+    show-sql: ${JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        use_sql_comments: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  servlet:
+    multipart:
+      max-file-size: ${MAX_FILE_SIZE:500MB}
+      max-request-size: ${MAX_REQUEST_SIZE:500MB}
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 3600000
+
+  security:
+    user:
+      name: ${SECURITY_USERNAME:admin}
+      password: ${SECURITY_PASSWORD:admin}
+
+  cloud:
+    aws:
+      region:
+        static: ${AWS_REGION:us-east-1}
+      s3:
+        endpoint: ${S3_ENDPOINT:}
+      credentials:
+        access-key: ${AWS_ACCESS_KEY_ID:}
+        secret-key: ${AWS_SECRET_ACCESS_KEY:}
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+  tomcat:
+    max-threads: ${TOMCAT_MAX_THREADS:200}
+    min-spare-threads: ${TOMCAT_MIN_SPARE_THREADS:10}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,loggers
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    export:
+      cloudwatch:
+        enabled: ${CLOUDWATCH_METRICS_ENABLED:true}
+        namespace: ${CLOUDWATCH_NAMESPACE:AstroDataPipeline/ImageProcessor}
+        step: PT1M
+      prometheus:
+        enabled: true
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      slo:
+        http.server.requests: 50ms,100ms,200ms,300ms,500ms,1s,2s
+
+logging:
+  level:
+    org.stsci.astro: ${LOG_LEVEL_APP:INFO}
+    org.springframework: ${LOG_LEVEL_SPRING:WARN}
+    org.hibernate: ${LOG_LEVEL_HIBERNATE:WARN}
+    software.amazon.awssdk: ${LOG_LEVEL_AWS:WARN}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{traceId},%X{spanId}] %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{traceId},%X{spanId}] %logger{36} - %msg%n"
+  file:
+    name: ${LOG_FILE_PATH:logs/image-processor.log}
+
+# Custom application configuration
+astro:
+  processing:
+    parallel:
+      max-concurrent-jobs: ${PROCESSING_MAX_CONCURRENT_JOBS:4}
+      thread-pool-size: ${PROCESSING_THREAD_POOL_SIZE:8}
+      queue-capacity: ${PROCESSING_QUEUE_CAPACITY:1000}
+      job-timeout: ${PROCESSING_JOB_TIMEOUT:PT30M}
+    
+    memory:
+      max-heap-size-bytes: ${PROCESSING_MAX_HEAP_SIZE:2147483648} # 2GB
+      max-image-size-bytes: ${PROCESSING_MAX_IMAGE_SIZE:524288000} # 500MB
+      use-memory-mapping: ${PROCESSING_USE_MEMORY_MAPPING:true}
+      buffer-pool-size: ${PROCESSING_BUFFER_POOL_SIZE:10}
+    
+    calibration:
+      enable-dark-subtraction: ${CALIBRATION_ENABLE_DARK_SUBTRACTION:true}
+      enable-flat-correction: ${CALIBRATION_ENABLE_FLAT_CORRECTION:true}
+      enable-cosmic-ray-removal: ${CALIBRATION_ENABLE_COSMIC_RAY_REMOVAL:true}
+      enable-image-stacking: ${CALIBRATION_ENABLE_IMAGE_STACKING:true}
+      cosmic-ray-threshold: ${CALIBRATION_COSMIC_RAY_THRESHOLD:5.0}
+      stacking-method: ${CALIBRATION_STACKING_METHOD:1}
+      sigma-clipping-threshold: ${CALIBRATION_SIGMA_CLIPPING_THRESHOLD:3.0}
+      preserve-original: ${CALIBRATION_PRESERVE_ORIGINAL:true}
+      output-format: ${CALIBRATION_OUTPUT_FORMAT:FITS}
+      generate-thumbnails: ${CALIBRATION_GENERATE_THUMBNAILS:true}
+      thumbnail-size: ${CALIBRATION_THUMBNAIL_SIZE:512}
+    
+    s3:
+      raw-data-bucket: ${S3_RAW_DATA_BUCKET:astro-data-pipeline-raw-data-dev}
+      processed-data-bucket: ${S3_PROCESSED_DATA_BUCKET:astro-data-pipeline-processed-data-dev}
+      archive-bucket: ${S3_ARCHIVE_BUCKET:astro-data-pipeline-archive-dev}
+      region: ${S3_REGION:us-east-1}
+      multipart-threshold-mb: ${S3_MULTIPART_THRESHOLD_MB:100}
+      max-retries: ${S3_MAX_RETRIES:3}
+      request-timeout: ${S3_REQUEST_TIMEOUT:PT5M}
+      use-accelerate-endpoint: ${S3_USE_ACCELERATE_ENDPOINT:false}
+    
+    monitoring:
+      enable-metrics: ${MONITORING_ENABLE_METRICS:true}
+      enable-tracing: ${MONITORING_ENABLE_TRACING:true}
+      enable-detailed-logging: ${MONITORING_ENABLE_DETAILED_LOGGING:false}
+      metrics-namespace: ${MONITORING_METRICS_NAMESPACE:AstroDataPipeline/ImageProcessor}
+      metrics-publish-interval: ${MONITORING_METRICS_PUBLISH_INTERVAL:PT1M}
+      max-logged-errors: ${MONITORING_MAX_LOGGED_ERRORS:100}
+      enable-performance-profiling: ${MONITORING_ENABLE_PERFORMANCE_PROFILING:false}
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+logging:
+  level:
+    org.stsci.astro: DEBUG
+    org.springframework.security: DEBUG
+
+astro:
+  processing:
+    monitoring:
+      enable-detailed-logging: true
+      enable-performance-profiling: true
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: test
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: password
+  
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+
+  h2:
+    console:
+      enabled: true
+
+astro:
+  processing:
+    s3:
+      raw-data-bucket: test-raw-bucket
+      processed-data-bucket: test-processed-bucket
+      archive-bucket: test-archive-bucket
+
+---
+
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+logging:
+  level:
+    org.stsci.astro: INFO
+    org.springframework: WARN
+    org.hibernate: WARN
+
+astro:
+  processing:
+    parallel:
+      max-concurrent-jobs: 8
+      thread-pool-size: 16
+    
+    memory:
+      max-heap-size-bytes: 4294967296 # 4GB
+      max-image-size-bytes: 1073741824 # 1GB
+    
+    s3:
+      raw-data-bucket: astro-data-pipeline-raw-data-prod
+      processed-data-bucket: astro-data-pipeline-processed-data-prod
+      archive-bucket: astro-data-pipeline-archive-prod
+      use-accelerate-endpoint: true
+    
+    monitoring:
+      enable-metrics: true
+      enable-tracing: true
+      enable-detailed-logging: false

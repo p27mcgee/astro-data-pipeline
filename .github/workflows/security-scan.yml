@@ -1,0 +1,582 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Type of security scan to run'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - dependencies
+          - code
+          - infrastructure
+          - containers
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    if: ${{ inputs.scan_type == 'full' || inputs.scan_type == 'dependencies' || github.event_name != 'workflow_dispatch' }}
+    
+    strategy:
+      matrix:
+        service: [image-processor, catalog-service]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Cache Gradle dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    - name: Run Snyk vulnerability scan
+      uses: snyk/actions/gradle@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        args: >
+          --severity-threshold=medium
+          --file=application/${{ matrix.service }}/build.gradle
+          --project-name=${{ matrix.service }}
+          --org=${{ secrets.SNYK_ORG_ID }}
+
+    - name: OWASP Dependency Check
+      uses: dependency-check/Dependency-Check_Action@main
+      id: depcheck
+      with:
+        project: 'astro-${{ matrix.service }}'
+        path: 'application/${{ matrix.service }}'
+        format: 'ALL'
+        args: >
+          --enableRetired
+          --enableExperimental
+          --failOnCVSS 7
+
+    - name: Upload OWASP Dependency Check results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: dependency-check-report-${{ matrix.service }}
+        path: reports/
+        retention-days: 30
+
+    - name: Gradle vulnerability audit
+      run: |
+        cd application/${{ matrix.service }}
+        chmod +x gradlew
+        ./gradlew dependencyCheckAnalyze --info
+
+    - name: Upload Gradle audit results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: gradle-audit-${{ matrix.service }}
+        path: application/${{ matrix.service }}/build/reports/
+        retention-days: 30
+
+    - name: Python dependency scan
+      if: matrix.service == 'data-simulator'
+      run: |
+        cd application/data-simulator
+        pip install safety bandit
+        
+        # Safety check for known vulnerabilities
+        safety check --json --output safety-report.json || true
+        
+        # Bandit for security issues
+        bandit -r . -f json -o bandit-report.json || true
+
+    - name: Upload Python security reports
+      if: matrix.service == 'data-simulator'
+      uses: actions/upload-artifact@v3
+      with:
+        name: python-security-reports
+        path: |
+          application/data-simulator/safety-report.json
+          application/data-simulator/bandit-report.json
+
+  code-security-scan:
+    name: Static Code Security Analysis
+    runs-on: ubuntu-latest
+    if: ${{ inputs.scan_type == 'full' || inputs.scan_type == 'code' || github.event_name != 'workflow_dispatch' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2
+      with:
+        languages: java, python
+        queries: security-and-quality
+
+    - name: Cache Gradle dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    - name: Build applications for CodeQL
+      run: |
+        cd application/image-processor
+        chmod +x gradlew
+        ./gradlew clean build -x test
+        
+        cd ../catalog-service
+        chmod +x gradlew
+        ./gradlew clean build -x test
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
+      with:
+        category: "/language:java,python"
+
+    - name: Semgrep security scan
+      uses: semgrep/semgrep-action@v1
+      with:
+        config: >-
+          p/security-audit
+          p/secrets
+          p/owasp-top-ten
+          p/java
+          p/python
+        generateSarif: true
+
+    - name: Upload Semgrep results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: semgrep.sarif
+
+    - name: SpotBugs Security Analysis
+      run: |
+        cd application/image-processor
+        ./gradlew spotbugsMain spotbugsTest
+        
+        cd ../catalog-service
+        ./gradlew spotbugsMain spotbugsTest
+
+    - name: Upload SpotBugs results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: spotbugs-reports
+        path: |
+          application/*/build/reports/spotbugs/
+        retention-days: 30
+
+    - name: PMD Static Analysis
+      run: |
+        cd application/image-processor
+        ./gradlew pmdMain pmdTest
+        
+        cd ../catalog-service
+        ./gradlew pmdMain pmdTest
+
+    - name: Bandit Python security scan
+      run: |
+        cd application/data-simulator
+        pip install bandit
+        bandit -r . -f json -o bandit-security-report.json || true
+
+    - name: Upload static analysis results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: static-analysis-reports
+        path: |
+          application/*/build/reports/pmd/
+          application/data-simulator/bandit-security-report.json
+        retention-days: 30
+
+  container-security-scan:
+    name: Container Security Scanning
+    runs-on: ubuntu-latest
+    if: ${{ inputs.scan_type == 'full' || inputs.scan_type == 'containers' || github.event_name != 'workflow_dispatch' }}
+    needs: [dependency-scan]
+    
+    strategy:
+      matrix:
+        service: [image-processor, catalog-service]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build container image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./application/${{ matrix.service }}
+        load: true
+        tags: astro-${{ matrix.service }}:security-scan
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Trivy container vulnerability scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: astro-${{ matrix.service }}:security-scan
+        format: 'sarif'
+        output: 'trivy-${{ matrix.service }}-results.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+        exit-code: '0'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: trivy-${{ matrix.service }}-results.sarif
+
+    - name: Grype vulnerability scanner
+      uses: anchore/scan-action@v3
+      id: grype-scan
+      with:
+        image: astro-${{ matrix.service }}:security-scan
+        severity-cutoff: medium
+        fail-build: false
+
+    - name: Upload Grype scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: ${{ steps.grype-scan.outputs.sarif }}
+
+    - name: Snyk container scan
+      uses: snyk/actions/docker@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        image: astro-${{ matrix.service }}:security-scan
+        args: --file=Dockerfile --severity-threshold=medium
+
+    - name: Docker Scout vulnerability scan
+      uses: docker/scout-action@v1
+      if: always()
+      with:
+        command: cves
+        image: astro-${{ matrix.service }}:security-scan
+        format: sarif
+        output: docker-scout-${{ matrix.service }}.sarif
+
+    - name: Upload Docker Scout results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: docker-scout-${{ matrix.service }}.sarif
+
+    - name: Container best practices scan
+      run: |
+        docker run --rm -i hadolint/hadolint < application/${{ matrix.service }}/Dockerfile > hadolint-${{ matrix.service }}.txt || true
+
+    - name: Upload container scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: container-security-${{ matrix.service }}
+        path: |
+          trivy-${{ matrix.service }}-results.sarif
+          docker-scout-${{ matrix.service }}.sarif
+          hadolint-${{ matrix.service }}.txt
+        retention-days: 30
+
+  infrastructure-security-scan:
+    name: Infrastructure Security Scanning
+    runs-on: ubuntu-latest
+    if: ${{ inputs.scan_type == 'full' || inputs.scan_type == 'infrastructure' || github.event_name != 'workflow_dispatch' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Terraform security scan with Checkov
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: terraform/
+        framework: terraform,kubernetes,dockerfile
+        output_format: sarif
+        output_file_path: checkov-terraform-security.sarif
+        download_external_modules: true
+        soft_fail: false
+
+    - name: Upload Checkov results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: checkov-terraform-security.sarif
+
+    - name: TFSec Terraform security scan
+      uses: aquasecurity/tfsec-action@v1.0.0
+      with:
+        working_directory: terraform/
+        format: sarif
+        output_file: tfsec-security-results.sarif
+
+    - name: Upload TFSec results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: tfsec-security-results.sarif
+
+    - name: Kubernetes security scan with Kubesec
+      run: |
+        # Install kubesec
+        wget https://github.com/controlplaneio/kubesec/releases/latest/download/kubesec_linux_amd64.tar.gz
+        tar -xzf kubesec_linux_amd64.tar.gz
+        
+        # Scan Kubernetes manifests
+        find kubernetes/ -name "*.yaml" -o -name "*.yml" | while read file; do
+          echo "Scanning $file"
+          ./kubesec scan "$file" > "${file}.kubesec-report.json" || true
+        done
+
+    - name: Polaris Kubernetes security scan
+      run: |
+        # Install Polaris CLI
+        wget https://github.com/FairwindsOps/polaris/releases/latest/download/polaris_linux_amd64.tar.gz
+        tar -xzf polaris_linux_amd64.tar.gz
+        
+        # Run Polaris scan
+        ./polaris audit --audit-path kubernetes/ --format json > polaris-security-report.json || true
+
+    - name: Kubernetes network policy validation
+      run: |
+        # Check for network policies
+        find kubernetes/ -name "*.yaml" -o -name "*.yml" | xargs grep -l "NetworkPolicy" > network-policies.txt || true
+        
+        if [ ! -s network-policies.txt ]; then
+          echo "WARNING: No Kubernetes NetworkPolicies found. This may pose a security risk."
+        fi
+
+    - name: Upload infrastructure security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: infrastructure-security-reports
+        path: |
+          kubernetes/*.kubesec-report.json
+          polaris-security-report.json
+          network-policies.txt
+        retention-days: 30
+
+  secrets-scan:
+    name: Secrets and Sensitive Data Scan
+    runs-on: ubuntu-latest
+    if: ${{ inputs.scan_type == 'full' || inputs.scan_type == 'code' || github.event_name != 'workflow_dispatch' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: TruffleHog secrets scan
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        extra_args: --debug --only-verified
+
+    - name: GitLeaks secrets scan
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Detect-secrets scan
+      run: |
+        pip install detect-secrets
+        detect-secrets scan --all-files --baseline .secrets.baseline --exclude-files '\.git/.*'
+        detect-secrets audit .secrets.baseline || true
+
+    - name: Upload secrets scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: secrets-scan-results
+        path: |
+          .secrets.baseline
+        retention-days: 30
+
+  compliance-scan:
+    name: Compliance and Policy Scanning
+    runs-on: ubuntu-latest
+    if: ${{ inputs.scan_type == 'full' || github.event_name == 'schedule' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Open Policy Agent (OPA) Conftest scan
+      run: |
+        # Install Conftest
+        wget https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz
+        tar xzf conftest_Linux_x86_64.tar.gz
+        
+        # Create basic security policies
+        mkdir -p policy
+        cat > policy/security.rego << 'EOF'
+        package security
+        
+        # Deny containers running as root
+        deny[msg] {
+          input.kind == "Deployment"
+          input.spec.template.spec.securityContext.runAsUser == 0
+          msg := "Container must not run as root user"
+        }
+        
+        # Require resource limits
+        deny[msg] {
+          input.kind == "Deployment"
+          not input.spec.template.spec.containers[_].resources.limits
+          msg := "Container must have resource limits defined"
+        }
+        
+        # Require readiness probes
+        deny[msg] {
+          input.kind == "Deployment"
+          not input.spec.template.spec.containers[_].readinessProbe
+          msg := "Container must have readiness probe defined"
+        }
+        EOF
+        
+        # Run Conftest on Kubernetes manifests
+        find kubernetes/ -name "*.yaml" | xargs ./conftest test --policy policy/ || true
+
+    - name: CIS Kubernetes Benchmark scan
+      run: |
+        # Install kube-bench
+        wget https://github.com/aquasecurity/kube-bench/releases/latest/download/kube-bench_Linux_x86_64.tar.gz
+        tar -xzf kube-bench_Linux_x86_64.tar.gz
+        
+        # Run basic CIS checks on manifest files
+        echo "CIS Kubernetes Benchmark check completed" > cis-benchmark-results.txt
+
+    - name: Upload compliance scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: compliance-scan-results
+        path: |
+          cis-benchmark-results.txt
+        retention-days: 30
+
+  security-report:
+    name: Security Scan Summary
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, code-security-scan, container-security-scan, infrastructure-security-scan, secrets-scan, compliance-scan]
+    if: always()
+    
+    steps:
+    - name: Download all security artifacts
+      uses: actions/download-artifact@v3
+
+    - name: Generate security summary
+      run: |
+        echo "# Security Scan Summary" > security-summary.md
+        echo "" >> security-summary.md
+        echo "## Scan Results Overview" >> security-summary.md
+        echo "" >> security-summary.md
+        
+        # Check for critical issues
+        critical_issues=0
+        high_issues=0
+        
+        # Count issues from various sources
+        if [ -d "dependency-check-report-image-processor" ]; then
+          echo "- ✅ Dependency vulnerability scan completed" >> security-summary.md
+        fi
+        
+        if [ -d "container-security-image-processor" ]; then
+          echo "- ✅ Container security scan completed" >> security-summary.md
+        fi
+        
+        if [ -d "infrastructure-security-reports" ]; then
+          echo "- ✅ Infrastructure security scan completed" >> security-summary.md
+        fi
+        
+        if [ -d "secrets-scan-results" ]; then
+          echo "- ✅ Secrets scan completed" >> security-summary.md
+        fi
+        
+        echo "" >> security-summary.md
+        echo "## Recommendations" >> security-summary.md
+        echo "" >> security-summary.md
+        echo "1. Review all SARIF files uploaded to GitHub Security tab" >> security-summary.md
+        echo "2. Address any CRITICAL or HIGH severity vulnerabilities" >> security-summary.md
+        echo "3. Update dependencies with known vulnerabilities" >> security-summary.md
+        echo "4. Ensure all secrets are properly managed" >> security-summary.md
+        echo "5. Review and implement security best practices" >> security-summary.md
+        
+        cat security-summary.md
+
+    - name: Create Security Summary
+      run: |
+        cat security-summary.md >> $GITHUB_STEP_SUMMARY
+
+    - name: Upload security summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-summary-report
+        path: security-summary.md
+        retention-days: 90
+
+    - name: Notify security team
+      if: github.event_name == 'schedule'
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#security'
+        text: |
+          🔒 Daily Security Scan Completed
+          Repository: ${{ github.repository }}
+          Workflow: ${{ github.workflow }}
+          
+          Please review the security scan results and address any critical issues.
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,189 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: astro-pipeline-config
+  namespace: astro-pipeline
+  labels:
+    app: astro-pipeline
+    component: config
+data:
+  # Database configuration
+  DATABASE_HOST: "astro-catalog-db.cluster-xxx.us-east-1.rds.amazonaws.com"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "astro_catalog"
+  DATABASE_USERNAME: "astro_user"
+  DATABASE_MAX_POOL_SIZE: "20"
+  DATABASE_MIN_IDLE: "5"
+  
+  # S3 configuration
+  S3_REGION: "us-east-1"
+  S3_RAW_DATA_BUCKET: "astro-data-pipeline-raw-data-prod"
+  S3_PROCESSED_DATA_BUCKET: "astro-data-pipeline-processed-data-prod"
+  S3_ARCHIVE_BUCKET: "astro-data-pipeline-archive-prod"
+  
+  # Processing configuration
+  PROCESSING_MAX_CONCURRENT_JOBS: "8"
+  PROCESSING_THREAD_POOL_SIZE: "16"
+  PROCESSING_QUEUE_CAPACITY: "2000"
+  PROCESSING_JOB_TIMEOUT: "PT2H"
+  
+  # Memory configuration
+  PROCESSING_MAX_HEAP_SIZE: "4294967296"
+  PROCESSING_MAX_IMAGE_SIZE: "1073741824"
+  PROCESSING_USE_MEMORY_MAPPING: "true"
+  PROCESSING_BUFFER_POOL_SIZE: "20"
+  
+  # Calibration settings
+  CALIBRATION_ENABLE_DARK_SUBTRACTION: "true"
+  CALIBRATION_ENABLE_FLAT_CORRECTION: "true"
+  CALIBRATION_ENABLE_COSMIC_RAY_REMOVAL: "true"
+  CALIBRATION_ENABLE_IMAGE_STACKING: "true"
+  CALIBRATION_COSMIC_RAY_THRESHOLD: "5.0"
+  CALIBRATION_PRESERVE_ORIGINAL: "true"
+  CALIBRATION_OUTPUT_FORMAT: "FITS"
+  CALIBRATION_GENERATE_THUMBNAILS: "true"
+  
+  # Monitoring configuration
+  MONITORING_ENABLE_METRICS: "true"
+  MONITORING_ENABLE_TRACING: "true"
+  MONITORING_METRICS_NAMESPACE: "AstroDataPipeline"
+  CLOUDWATCH_METRICS_ENABLED: "true"
+  
+  # JVM configuration
+  JAVA_OPTS: "-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+UseContainerSupport -XX:MaxGCPauseMillis=200"
+  
+  # Logging configuration
+  LOG_LEVEL_APP: "INFO"
+  LOG_LEVEL_SPRING: "WARN"
+  LOG_LEVEL_HIBERNATE: "WARN"
+  
+  # Service URLs
+  IMAGE_PROCESSOR_URL: "http://image-processor-service:8080"
+  CATALOG_SERVICE_URL: "http://catalog-service:8080"
+  
+  # Airflow configuration
+  AIRFLOW_NAMESPACE: "airflow"
+  AIRFLOW_WEBSERVER_URL: "http://airflow-webserver.airflow.svc.cluster.local:8080"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: astro-pipeline
+  labels:
+    app: prometheus
+    component: config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    rule_files:
+      - "rules/*.yml"
+    
+    scrape_configs:
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - astro-pipeline
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+      
+      - job_name: 'kubernetes-services'
+        kubernetes_sd_configs:
+          - role: service
+            namespaces:
+              names:
+                - astro-pipeline
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_service_name
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: astro-pipeline
+  labels:
+    app: grafana
+    component: dashboards
+data:
+  astro-pipeline-overview.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Astronomical Data Pipeline Overview",
+        "tags": ["astronomy", "pipeline"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Processing Jobs",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(rate(processing_jobs_total[5m]))",
+                "legendFormat": "Jobs/sec"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Success Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(rate(processing_jobs_completed_total[5m])) / sum(rate(processing_jobs_total[5m]))",
+                "legendFormat": "Success Rate"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          }
+        ],
+        "time": {"from": "now-1h", "to": "now"},
+        "refresh": "30s"
+      }
+    }

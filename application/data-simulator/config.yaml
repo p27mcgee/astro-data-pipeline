@@ -1,0 +1,185 @@
+# Astronomical FITS File Generator Configuration
+
+# Image properties
+image_size: [2048, 2048]  # [height, width] in pixels
+pixel_scale: 0.25  # arcseconds per pixel
+
+# Detector characteristics
+gain: 1.5  # electrons per ADU
+read_noise: 5.0  # electrons RMS
+dark_current: 0.01  # electrons per pixel per second
+sky_background: 1000.0  # electrons per pixel
+saturation_level: 65000  # ADU
+
+# Observatory configurations
+telescopes:
+  - 'Hubble Space Telescope'
+  - 'James Webb Space Telescope'
+  - 'Very Large Telescope'
+  - 'Gemini North'
+  - 'Gemini South'
+  - 'Keck I'
+  - 'Keck II'
+  - 'Subaru'
+  - 'Magellan'
+  - 'Palomar 200-inch'
+
+instruments:
+  - 'WFC3'  # HST Wide Field Camera 3
+  - 'NIRCam'  # JWST Near Infrared Camera
+  - 'FORS2'  # VLT FOcal Reducer and low dispersion Spectrograph
+  - 'GMOS-N'  # Gemini Multi-Object Spectrograph North
+  - 'GMOS-S'  # Gemini Multi-Object Spectrograph South
+  - 'DEIMOS'  # Keck DEep Imaging Multi-Object Spectrograph
+  - 'LRIS'  # Keck Low Resolution Imaging Spectrometer
+  - 'SuprimeCam'  # Subaru Prime Focus Camera
+  - 'IMACS'  # Magellan Inamori-Magellan Areal Camera & Spectrograph
+  - 'WIRC'  # Palomar Wide-field Infrared Camera
+
+filters:
+  # Optical filters
+  - 'U'      # Johnson U
+  - 'B'      # Johnson B
+  - 'V'      # Johnson V
+  - 'R'      # Johnson R
+  - 'I'      # Johnson I
+  - 'u'      # SDSS u
+  - 'g'      # SDSS g
+  - 'r'      # SDSS r
+  - 'i'      # SDSS i
+  - 'z'      # SDSS z
+  # HST filters
+  - 'F606W'  # HST Wide V
+  - 'F814W'  # HST Wide I
+  - 'F555W'  # HST Wide V
+  - 'F775W'  # HST Wide I
+  - 'F850LP' # HST Long-pass z
+  # JWST filters
+  - 'F070W'  # JWST NIRCam
+  - 'F090W'  # JWST NIRCam
+  - 'F115W'  # JWST NIRCam
+  - 'F150W'  # JWST NIRCam
+  - 'F200W'  # JWST NIRCam
+  - 'F277W'  # JWST NIRCam
+  - 'F356W'  # JWST NIRCam
+  - 'F444W'  # JWST NIRCam
+
+# Source populations
+star_density: 100  # stars per square arcminute
+galaxy_density: 10  # galaxies per square arcminute
+
+# Stellar population parameters
+stellar_magnitudes:
+  bright_fraction: 0.1  # Fraction of bright stars
+  bright_range: [12.0, 18.0]  # Magnitude range for bright stars
+  faint_range: [18.0, 25.0]   # Magnitude range for faint stars
+
+# Galaxy population parameters
+galaxy_magnitudes:
+  range: [18.0, 27.0]  # Galaxy magnitude range
+
+galaxy_morphology:
+  spiral_fraction: 0.6    # Fraction of spiral galaxies (Sersic n=1)
+  elliptical_fraction: 0.4  # Fraction of elliptical galaxies (Sersic n=4)
+
+# Environmental effects
+seeing:
+  mean: 1.2  # arcseconds FWHM
+  stddev: 0.3  # Standard deviation
+
+airmass:
+  min: 1.0
+  max: 2.5
+
+# Cosmic ray parameters
+cosmic_ray_rate: 0.1  # cosmic rays per pixel per hour
+
+# Noise parameters
+poisson_noise: true
+read_noise_enabled: true
+
+# Output configuration
+output_format: 'fits'
+compression: false  # Enable FITS compression
+checksum: true     # Add FITS checksums
+
+# AWS S3 configuration (optional)
+s3_bucket: null  # Set to bucket name to enable S3 upload
+s3_prefix: 'raw-data/fits/'
+
+# Random seed for reproducible results
+random_seed: null  # Set to integer for reproducible generation
+
+# Observation scheduling
+observation_types:
+  - 'SCIENCE'
+  - 'CALIBRATION'
+  - 'FLAT'
+  - 'BIAS'
+
+exposure_times: [30, 60, 120, 300, 600, 900, 1200, 1800, 3600]  # seconds
+
+# Field selection
+coordinate_ranges:
+  ra_min: 0.0      # degrees
+  ra_max: 360.0    # degrees
+  dec_min: -30.0   # degrees (avoid extreme southern sky for most observatories)
+  dec_max: 60.0    # degrees
+
+# Target types for realistic field selection
+target_types:
+  - 'DEEP_FIELD'     # Deep extragalactic fields
+  - 'STELLAR_FIELD'  # Stellar-dominated regions
+  - 'GALAXY_CLUSTER' # Rich galaxy clusters
+  - 'NEBULA'         # Nebular regions
+  - 'CALIBRATION'    # Standard star fields
+
+# Quality flags
+quality_flags:
+  excellent: 0.7   # Probability of excellent data quality
+  good: 0.2       # Probability of good data quality
+  fair: 0.08      # Probability of fair data quality
+  poor: 0.02      # Probability of poor data quality
+
+# Weather conditions
+weather_conditions:
+  clear: 0.7      # Probability of clear conditions
+  thin_clouds: 0.2  # Probability of thin clouds
+  thick_clouds: 0.1  # Probability of thick clouds
+
+# Data simulation realism levels
+realism_level: 'high'  # 'basic', 'standard', 'high', 'ultra'
+
+realism_settings:
+  basic:
+    include_cosmic_rays: false
+    include_bad_pixels: false
+    include_vignetting: false
+    noise_model: 'gaussian'
+    
+  standard:
+    include_cosmic_rays: true
+    include_bad_pixels: false
+    include_vignetting: false
+    noise_model: 'poisson'
+    
+  high:
+    include_cosmic_rays: true
+    include_bad_pixels: true
+    include_vignetting: true
+    noise_model: 'poisson'
+    include_fringing: false
+    
+  ultra:
+    include_cosmic_rays: true
+    include_bad_pixels: true
+    include_vignetting: true
+    noise_model: 'poisson'
+    include_fringing: true
+    include_optical_distortion: true
+    include_persistence: true
+
+# Logging configuration
+logging:
+  level: 'INFO'  # DEBUG, INFO, WARNING, ERROR
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

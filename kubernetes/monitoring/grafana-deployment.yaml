@@ -1,0 +1,781 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: astro-pipeline
+  labels:
+    app: grafana
+    component: monitoring
+data:
+  grafana.ini: |
+    [analytics]
+    check_for_updates = true
+    
+    [grafana_net]
+    url = https://grafana.net
+    
+    [log]
+    mode = console
+    level = info
+    
+    [paths]
+    data = /var/lib/grafana/
+    logs = /var/log/grafana
+    plugins = /var/lib/grafana/plugins
+    provisioning = /etc/grafana/provisioning
+    
+    [server]
+    protocol = http
+    http_port = 3000
+    domain = localhost
+    enforce_domain = false
+    root_url = http://localhost:3000/
+    router_logging = false
+    static_root_path = public
+    enable_gzip = false
+    cert_file =
+    cert_key =
+    socket = /tmp/grafana.sock
+    
+    [database]
+    type = sqlite3
+    host = 127.0.0.1:3306
+    name = grafana
+    user = root
+    password =
+    url =
+    ssl_mode = disable
+    ca_cert_path =
+    client_key_path =
+    client_cert_path =
+    server_cert_name =
+    path = /var/lib/grafana/grafana.db
+    max_idle_conn = 2
+    max_open_conn =
+    conn_max_lifetime = 14400
+    log_queries =
+    cache_mode = private
+    
+    [session]
+    provider = file
+    provider_config = sessions
+    cookie_name = grafana_sess
+    cookie_secure = false
+    session_life_time = 86400
+    gc_interval_time = 86400
+    
+    [dataproxy]
+    logging = false
+    timeout = 30
+    send_user_header = false
+    
+    [security]
+    admin_user = admin
+    admin_password = astro-grafana-2023!
+    secret_key = SW2YcwTIb9zpOOhoPsMm
+    disable_gravatar = false
+    data_source_proxy_whitelist =
+    disable_brute_force_login_protection = false
+    cookie_secure = false
+    cookie_samesite = lax
+    allow_embedding = false
+    strict_transport_security = false
+    strict_transport_security_max_age_seconds = 86400
+    strict_transport_security_preload = false
+    strict_transport_security_subdomains = false
+    x_content_type_options = true
+    x_xss_protection = true
+    
+    [users]
+    allow_sign_up = false
+    allow_org_create = false
+    auto_assign_org = true
+    auto_assign_org_id = 1
+    auto_assign_org_role = Viewer
+    verify_email_enabled = false
+    login_hint = email or username
+    default_theme = dark
+    
+    [auth]
+    login_cookie_name = grafana_session
+    disable_login_form = false
+    disable_signout_menu = false
+    signout_redirect_url =
+    oauth_auto_login = false
+    
+    [auth.anonymous]
+    enabled = false
+    org_name = Main Org.
+    org_role = Viewer
+    hide_version = false
+    
+    [smtp]
+    enabled = false
+    host = localhost:587
+    user =
+    password =
+    cert_file =
+    key_file =
+    skip_verify = false
+    from_address = admin@grafana.localhost
+    from_name = Grafana
+    ehlo_identity = dashboard.example.com
+    startTLS_policy = OpportunisticStartTLS
+    
+    [emails]
+    welcome_email_on_sign_up = false
+    templates_pattern = emails/*.html
+    
+    [unified_alerting]
+    enabled = true
+    
+    [alerting]
+    enabled = false
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: astro-pipeline
+  labels:
+    app: grafana
+    component: monitoring
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: true
+      jsonData:
+        timeInterval: 15s
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-config
+  namespace: astro-pipeline
+  labels:
+    app: grafana
+    component: monitoring
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+    - name: 'default'
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-astro-pipeline
+  namespace: astro-pipeline
+  labels:
+    app: grafana
+    component: monitoring
+data:
+  astro-pipeline-overview.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Astronomical Data Pipeline Overview",
+        "tags": ["astro", "pipeline", "overview"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "FITS Processing Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "rate(fits_processing_total[5m])",
+                "legendFormat": "Files/sec"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 6,
+              "x": 0,
+              "y": 0
+            }
+          },
+          {
+            "id": 2,
+            "title": "Processing Success Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "rate(fits_processing_success_total[5m]) / rate(fits_processing_total[5m]) * 100",
+                "legendFormat": "Success %"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "min": 0,
+                "max": 100,
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "thresholds": {
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": 0
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 90
+                    },
+                    {
+                      "color": "green",
+                      "value": 95
+                    }
+                  ]
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 6,
+              "x": 6,
+              "y": 0
+            }
+          },
+          {
+            "id": 3,
+            "title": "Active Processing Jobs",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum(kube_job_status_active{namespace=\"astro-pipeline\"})",
+                "legendFormat": "Active Jobs"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 6,
+              "x": 12,
+              "y": 0
+            }
+          },
+          {
+            "id": 4,
+            "title": "Catalog Objects Ingested",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "increase(catalog_objects_ingested_total[1h])",
+                "legendFormat": "Objects/hour"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "short",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 6,
+              "x": 18,
+              "y": 0
+            }
+          },
+          {
+            "id": 5,
+            "title": "Processing Duration Percentiles",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.50, rate(fits_processing_duration_seconds_bucket[5m]))",
+                "legendFormat": "50th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.95, rate(fits_processing_duration_seconds_bucket[5m]))",
+                "legendFormat": "95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.99, rate(fits_processing_duration_seconds_bucket[5m]))",
+                "legendFormat": "99th percentile"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 0,
+              "y": 8
+            }
+          },
+          {
+            "id": 6,
+            "title": "Resource Utilization",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "rate(container_cpu_usage_seconds_total{pod=~\"image-processor-.*|catalog-service-.*\"}[5m]) * 100",
+                "legendFormat": "CPU % - {{pod}}"
+              },
+              {
+                "expr": "container_memory_working_set_bytes{pod=~\"image-processor-.*|catalog-service-.*\"} / 1024 / 1024 / 1024",
+                "legendFormat": "Memory GB - {{pod}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 12,
+              "y": 8
+            }
+          },
+          {
+            "id": 7,
+            "title": "Database Performance",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "postgresql_connections_active{database=\"astro_catalog\"}",
+                "legendFormat": "Active Connections"
+              },
+              {
+                "expr": "rate(catalog_query_duration_seconds_sum[5m]) / rate(catalog_query_duration_seconds_count[5m])",
+                "legendFormat": "Avg Query Time (s)"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 0,
+              "y": 16
+            }
+          },
+          {
+            "id": 8,
+            "title": "Storage I/O",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "rate(s3_requests_total[5m])",
+                "legendFormat": "S3 Requests/sec"
+              },
+              {
+                "expr": "rate(s3_bytes_downloaded[5m]) / 1024 / 1024",
+                "legendFormat": "Download MB/sec"
+              },
+              {
+                "expr": "rate(s3_bytes_uploaded[5m]) / 1024 / 1024",
+                "legendFormat": "Upload MB/sec"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 12,
+              "y": 16
+            }
+          }
+        ]
+      }
+    }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-performance
+  namespace: astro-pipeline
+  labels:
+    app: grafana
+    component: monitoring
+data:
+  performance-monitoring.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Astronomical Pipeline Performance",
+        "tags": ["astro", "performance", "detailed"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "15s",
+        "time": {
+          "from": "now-30m",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Image Processing Throughput",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "rate(fits_processing_total[2m])",
+                "legendFormat": "Total Processing Rate"
+              },
+              {
+                "expr": "rate(fits_processing_success_total[2m])",
+                "legendFormat": "Successful Processing Rate"
+              },
+              {
+                "expr": "rate(fits_processing_errors_total[2m])",
+                "legendFormat": "Error Rate"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 24,
+              "x": 0,
+              "y": 0
+            }
+          },
+          {
+            "id": 2,
+            "title": "Processing Latency Distribution",
+            "type": "heatmap",
+            "targets": [
+              {
+                "expr": "rate(fits_processing_duration_seconds_bucket[5m])",
+                "legendFormat": "{{le}}"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 0,
+              "y": 8
+            }
+          },
+          {
+            "id": 3,
+            "title": "Memory Usage by Service",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "container_memory_working_set_bytes{pod=~\"image-processor-.*\"} / 1024 / 1024 / 1024",
+                "legendFormat": "Image Processor - {{pod}}"
+              },
+              {
+                "expr": "container_memory_working_set_bytes{pod=~\"catalog-service-.*\"} / 1024 / 1024 / 1024",
+                "legendFormat": "Catalog Service - {{pod}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "decbytes",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 12,
+              "y": 8
+            }
+          },
+          {
+            "id": 4,
+            "title": "JVM Memory Pools",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "jvm_memory_used_bytes{area=\"heap\"} / 1024 / 1024",
+                "legendFormat": "Heap Used MB - {{instance}}"
+              },
+              {
+                "expr": "jvm_memory_max_bytes{area=\"heap\"} / 1024 / 1024",
+                "legendFormat": "Heap Max MB - {{instance}}"
+              },
+              {
+                "expr": "jvm_memory_used_bytes{area=\"nonheap\"} / 1024 / 1024",
+                "legendFormat": "Non-Heap Used MB - {{instance}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "decbytes",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 0,
+              "y": 16
+            }
+          },
+          {
+            "id": 5,
+            "title": "Garbage Collection Performance",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "rate(jvm_gc_collection_seconds_sum[5m])",
+                "legendFormat": "GC Time/sec - {{gc}} - {{instance}}"
+              },
+              {
+                "expr": "rate(jvm_gc_collection_seconds_count[5m])",
+                "legendFormat": "GC Collections/sec - {{gc}} - {{instance}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "s",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 12,
+              "y": 16
+            }
+          },
+          {
+            "id": 6,
+            "title": "Astronomical Processing Metrics",
+            "type": "timeseries",
+            "targets": [
+              {
+                "expr": "rate(dark_subtraction_operations_total[5m])",
+                "legendFormat": "Dark Subtraction Ops/sec"
+              },
+              {
+                "expr": "rate(flat_correction_operations_total[5m])",
+                "legendFormat": "Flat Correction Ops/sec"
+              },
+              {
+                "expr": "rate(cosmic_ray_detection_operations_total[5m])",
+                "legendFormat": "Cosmic Ray Detection Ops/sec"
+              },
+              {
+                "expr": "rate(astronomical_objects_detected_total[5m])",
+                "legendFormat": "Objects Detected/sec"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {
+                  "mode": "palette-classic"
+                }
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 24,
+              "x": 0,
+              "y": 24
+            }
+          }
+        ]
+      }
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: astro-pipeline
+  labels:
+    app: grafana
+    component: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+        component: monitoring
+    spec:
+      serviceAccountName: grafana-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472
+        fsGroup: 472
+      containers:
+      - name: grafana
+        image: grafana/grafana:10.1.0
+        ports:
+        - name: grafana
+          containerPort: 3000
+          protocol: TCP
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          value: "admin"
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: "astro-grafana-2023!"
+        - name: GF_INSTALL_PLUGINS
+          value: "grafana-clock-panel,grafana-simple-json-datasource"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: grafana-config
+          mountPath: /etc/grafana/grafana.ini
+          subPath: grafana.ini
+        - name: grafana-datasources
+          mountPath: /etc/grafana/provisioning/datasources
+          readOnly: true
+        - name: grafana-dashboards-config
+          mountPath: /etc/grafana/provisioning/dashboards
+          readOnly: true
+        - name: grafana-dashboard-astro-pipeline
+          mountPath: /var/lib/grafana/dashboards/astro-pipeline-overview.json
+          subPath: astro-pipeline-overview.json
+          readOnly: true
+        - name: grafana-dashboard-performance
+          mountPath: /var/lib/grafana/dashboards/performance-monitoring.json
+          subPath: performance-monitoring.json
+          readOnly: true
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: grafana
+          initialDelaySeconds: 60
+          timeoutSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: grafana
+          initialDelaySeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+      volumes:
+      - name: grafana-config
+        configMap:
+          name: grafana-config
+      - name: grafana-datasources
+        configMap:
+          name: grafana-datasources
+      - name: grafana-dashboards-config
+        configMap:
+          name: grafana-dashboards-config
+      - name: grafana-dashboard-astro-pipeline
+        configMap:
+          name: grafana-dashboard-astro-pipeline
+      - name: grafana-dashboard-performance
+        configMap:
+          name: grafana-dashboard-performance
+      - name: grafana-storage
+        emptyDir:
+          sizeLimit: "2Gi"
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        node.kubernetes.io/workload: general
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: astro-pipeline
+  labels:
+    app: grafana
+    component: monitoring
+spec:
+  type: ClusterIP
+  ports:
+  - name: grafana
+    port: 3000
+    targetPort: grafana
+    protocol: TCP
+  selector:
+    app: grafana

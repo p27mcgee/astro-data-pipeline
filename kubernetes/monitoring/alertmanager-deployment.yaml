@@ -1,0 +1,319 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: astro-pipeline
+  labels:
+    app: alertmanager
+    component: monitoring
+data:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: 'localhost:587'
+      smtp_from: 'alertmanager@astro-pipeline.local'
+      slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+      
+    templates:
+      - '/etc/alertmanager/templates/*.tmpl'
+      
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: 'default'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'critical-alerts'
+        group_wait: 5s
+        repeat_interval: 1h
+      - match:
+          service: image-processor
+        receiver: 'processing-alerts'
+        group_interval: 2m
+      - match:
+          service: catalog-service
+        receiver: 'database-alerts'
+        group_interval: 2m
+      - match:
+          component: batch-job
+        receiver: 'batch-job-alerts'
+        group_interval: 1m
+        
+    inhibit_rules:
+    - source_match:
+        severity: 'critical'
+      target_match:
+        severity: 'warning'
+      equal: ['alertname', 'cluster', 'service']
+      
+    receivers:
+    - name: 'default'
+      slack_configs:
+      - channel: '#astro-pipeline-alerts'
+        title: 'Astronomical Pipeline Alert'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Severity:* {{ .Labels.severity }}
+          *Service:* {{ .Labels.service }}
+          {{ end }}
+        send_resolved: true
+        
+    - name: 'critical-alerts'
+      slack_configs:
+      - channel: '#astro-pipeline-critical'
+        title: 'CRITICAL: Astronomical Pipeline Alert'
+        text: |
+          🚨 *CRITICAL ALERT* 🚨
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Service:* {{ .Labels.service }}
+          *Instance:* {{ .Labels.instance }}
+          {{ end }}
+        send_resolved: true
+      email_configs:
+      - to: 'oncall@astro-pipeline.local'
+        subject: 'CRITICAL: {{ .GroupLabels.alertname }} - Astronomical Pipeline'
+        body: |
+          Critical alert in the astronomical data processing pipeline:
+          
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Service: {{ .Labels.service }}
+          Instance: {{ .Labels.instance }}
+          Started: {{ .StartsAt }}
+          {{ end }}
+          
+    - name: 'processing-alerts'
+      slack_configs:
+      - channel: '#processing-team'
+        title: 'Image Processing Alert'
+        text: |
+          🔬 *Image Processing Issue*
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Processing Rate:* Check dashboard for current metrics
+          {{ end }}
+        send_resolved: true
+        
+    - name: 'database-alerts'
+      slack_configs:
+      - channel: '#database-team'
+        title: 'Catalog Database Alert'
+        text: |
+          🗃️ *Database Performance Issue*
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Database:* {{ .Labels.database }}
+          {{ end }}
+        send_resolved: true
+        
+    - name: 'batch-job-alerts'
+      slack_configs:
+      - channel: '#batch-processing'
+        title: 'Batch Job Alert'
+        text: |
+          ⚙️ *Batch Processing Issue*
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Job:* {{ .Labels.job_name }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-templates
+  namespace: astro-pipeline
+  labels:
+    app: alertmanager
+    component: monitoring
+data:
+  default.tmpl: |
+    {{ define "cluster" }}{{ .ExternalURL | reReplaceAll ".*alertmanager\\.(.*)" "$1" }}{{ end }}
+    
+    {{ define "slack.default.title" }}
+    {{- if .CommonAnnotations.summary -}}
+    {{- .CommonAnnotations.summary -}}
+    {{- else -}}
+    {{- with index .Alerts 0 -}}
+    {{- .Annotations.summary -}}
+    {{- end -}}
+    {{- end -}}
+    {{ end }}
+    
+    {{ define "slack.default.text" }}
+    {{ range .Alerts }}
+    *Alert:* {{ .Annotations.summary }}
+    *Description:* {{ .Annotations.description }}
+    *Graph:* <{{ .GeneratorURL }}|:chart_with_upwards_trend:>
+    *Details:*
+    {{ range .Labels.SortedPairs }} • *{{ .Name }}:* `{{ .Value }}`
+    {{ end }}
+    {{ end }}
+    {{ end }}
+    
+    {{ define "email.default.subject" }}
+    [{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] 
+    {{ .GroupLabels.SortedPairs.Values | join " " }} {{ if gt (len .CommonLabels) (len .GroupLabels) }}({{ with .CommonLabels.Remove .GroupLabels.Names }}{{ .Values | join " " }}{{ end }}){{ end }}
+    {{ end }}
+    
+    {{ define "email.default.html" }}
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { background-color: #dc3545; color: white; padding: 10px; border-radius: 5px; }
+        .alert { margin: 10px 0; padding: 10px; border-left: 4px solid #dc3545; background-color: #f8f9fa; }
+        .resolved { border-left-color: #28a745; }
+        .label { font-weight: bold; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h2>Astronomical Pipeline Alert</h2>
+      </div>
+      
+      {{ range .Alerts }}
+      <div class="alert {{ if eq .Status "resolved" }}resolved{{ end }}">
+        <h3>{{ .Annotations.summary }}</h3>
+        <p><span class="label">Description:</span> {{ .Annotations.description }}</p>
+        <p><span class="label">Service:</span> {{ .Labels.service }}</p>
+        <p><span class="label">Instance:</span> {{ .Labels.instance }}</p>
+        <p><span class="label">Severity:</span> {{ .Labels.severity }}</p>
+        <p><span class="label">Started:</span> {{ .StartsAt }}</p>
+        {{ if .EndsAt }}
+        <p><span class="label">Ended:</span> {{ .EndsAt }}</p>
+        {{ end }}
+      </div>
+      {{ end }}
+    </body>
+    </html>
+    {{ end }}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: astro-pipeline
+  labels:
+    app: alertmanager
+    component: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+        component: monitoring
+    spec:
+      serviceAccountName: astro-pipeline-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+      - name: alertmanager
+        image: prom/alertmanager:v0.25.0
+        args:
+          - '--config.file=/etc/alertmanager/alertmanager.yml'
+          - '--cluster.listen-address=0.0.0.0:9094'
+          - '--storage.path=/alertmanager'
+          - '--data.retention=120h'
+          - '--web.listen-address=0.0.0.0:9093'
+          - '--web.external-url=http://alertmanager:9093'
+          - '--log.level=info'
+        ports:
+        - name: alertmanager
+          containerPort: 9093
+        - name: cluster
+          containerPort: 9094
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: alertmanager-config-volume
+          mountPath: /etc/alertmanager
+          readOnly: true
+        - name: alertmanager-templates-volume
+          mountPath: /etc/alertmanager/templates
+          readOnly: true
+        - name: alertmanager-storage-volume
+          mountPath: /alertmanager
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: alertmanager
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: alertmanager
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+      volumes:
+      - name: alertmanager-config-volume
+        configMap:
+          name: alertmanager-config
+      - name: alertmanager-templates-volume
+        configMap:
+          name: alertmanager-templates
+      - name: alertmanager-storage-volume
+        emptyDir:
+          sizeLimit: "1Gi"
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        node.kubernetes.io/workload: general
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: astro-pipeline
+  labels:
+    app: alertmanager
+    component: monitoring
+spec:
+  type: ClusterIP
+  ports:
+  - name: alertmanager
+    port: 9093
+    targetPort: alertmanager
+    protocol: TCP
+  - name: cluster
+    port: 9094
+    targetPort: cluster
+    protocol: TCP
+  selector:
+    app: alertmanager
