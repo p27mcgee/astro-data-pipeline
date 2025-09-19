@@ -9,6 +9,7 @@ import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Max;
+import java.util.List;
 
 /**
  * Request DTO for cone search operations
@@ -27,7 +28,7 @@ public class ConeSearchRequest {
     @NotNull(message = "Declination is required")
     @DecimalMin(value = "-90.0", message = "Dec must be >= -90.0")
     @DecimalMax(value = "90.0", message = "Dec must be <= 90.0")
-    private Double dec;
+    private Double decl;
 
     @NotNull(message = "Search radius is required")
     @DecimalMin(value = "0.0", inclusive = false, message = "Radius must be > 0.0")
@@ -47,6 +48,8 @@ public class ConeSearchRequest {
 
     private String objectType;
 
+    private List<String> objectTypes;
+
     private String filterName;
 
     @Builder.Default
@@ -54,6 +57,8 @@ public class ConeSearchRequest {
 
     @Builder.Default
     private Boolean includeCrossmatches = false;
+
+    private org.springframework.data.domain.Pageable pageable;
 
     /**
      * Convert radius from arcseconds to degrees
@@ -66,17 +71,17 @@ public class ConeSearchRequest {
      * Validate coordinate ranges
      */
     public boolean isValidCoordinates() {
-        return ra != null && dec != null && 
+        return ra != null && decl != null &&
                ra >= 0.0 && ra <= 360.0 && 
-               dec >= -90.0 && dec <= 90.0;
+               decl >= -90.0 && decl <= 90.0;
     }
 
     /**
      * Get formatted coordinates string
      */
     public String getFormattedCoordinates() {
-        if (ra != null && dec != null) {
-            return String.format("RA=%.6f°, Dec=%.6f°", ra, dec);
+        if (ra != null && decl != null) {
+            return String.format("RA=%.6f°, Dec=%.6f°", ra, decl);
         }
         return "Invalid coordinates";
     }
@@ -97,5 +102,14 @@ public class ConeSearchRequest {
             return Math.PI * radiusDeg * radiusDeg;
         }
         return null;
+    }
+
+    // Compatibility getters for service layer
+    public Double getCenterRa() {
+        return ra;
+    }
+
+    public Double getCenterDec() {
+        return decl;
     }
 }

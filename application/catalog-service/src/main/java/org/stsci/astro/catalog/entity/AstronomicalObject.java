@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.locationtech.jts.geom.Point;
 
 import java.time.LocalDateTime;
@@ -12,10 +14,10 @@ import java.util.Map;
 
 @Entity
 @Table(name = "astronomical_objects", indexes = {
-    @Index(name = "idx_objects_radec", columnList = "ra, dec"),
-    @Index(name = "idx_objects_type", columnList = "objectType"),
+    @Index(name = "idx_objects_radecl", columnList = "ra, decl"),
+    @Index(name = "idx_objects_type", columnList = "object_type"),
     @Index(name = "idx_objects_magnitude", columnList = "magnitude"),
-    @Index(name = "idx_objects_type_magnitude", columnList = "objectType, magnitude")
+    @Index(name = "idx_objects_type_magnitude", columnList = "object_type, magnitude")
 })
 @Data
 @NoArgsConstructor
@@ -45,14 +47,14 @@ public class AstronomicalObject {
     @Column(name = "ra", nullable = false)
     private Double ra; // Right Ascension in degrees
 
-    @Column(name = "dec", nullable = false)
-    private Double dec; // Declination in degrees
+    @Column(name = "decl", nullable = false)
+    private Double decl; // Declination in degrees
 
     @Column(name = "ra_error_mas")
     private Double raErrorMas; // milliarcseconds
 
-    @Column(name = "dec_error_mas")
-    private Double decErrorMas;
+    @Column(name = "decl_error_mas")
+    private Double declErrorMas;
 
     @Column(name = "position", columnDefinition = "geometry(Point,4326)")
     private Point position; // PostGIS geometry
@@ -62,15 +64,15 @@ public class AstronomicalObject {
     @Builder.Default
     private Double pmRa = 0.0;
 
-    @Column(name = "pm_dec")
+    @Column(name = "pm_decl")
     @Builder.Default
-    private Double pmDec = 0.0;
+    private Double pmDecl = 0.0;
 
     @Column(name = "pm_ra_error")
     private Double pmRaError;
 
-    @Column(name = "pm_dec_error")
-    private Double pmDecError;
+    @Column(name = "pm_decl_error")
+    private Double pmDeclError;
 
     // Parallax
     @Column(name = "parallax_mas")
@@ -94,7 +96,8 @@ public class AstronomicalObject {
     private PhotometricSystem photometricSystem;
 
     // Multi-band photometry stored as JSONB
-    @Column(name = "photometry", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "photometry")
     private Map<String, Object> photometry;
 
     // Physical properties
@@ -137,6 +140,9 @@ public class AstronomicalObject {
     @Column(name = "tycho_id", length = 50)
     private String tychoId;
 
+    @Column(name = "name", length = 200)
+    private String name;
+
     // Detection and measurement details
     @Column(name = "detection_significance")
     private Double detectionSignificance;
@@ -144,6 +150,7 @@ public class AstronomicalObject {
     @Column(name = "flux_auto")
     private Double fluxAuto; // Automatic aperture flux
 
+    @JdbcTypeCode(SqlTypes.ARRAY)
     @Column(name = "flux_aper")
     private double[] fluxAper; // Aperture photometry array
 
@@ -237,7 +244,7 @@ public class AstronomicalObject {
     }
 
     public boolean hasAstrometry() {
-        return ra != null && dec != null;
+        return ra != null && decl != null;
     }
 
     public boolean hasParallax() {
@@ -245,7 +252,7 @@ public class AstronomicalObject {
     }
 
     public boolean hasProperMotion() {
-        return (pmRa != null && Math.abs(pmRa) > 0) || (pmDec != null && Math.abs(pmDec) > 0);
+        return (pmRa != null && Math.abs(pmRa) > 0) || (pmDecl != null && Math.abs(pmDecl) > 0);
     }
 
     public Double getApparentMagnitude() {
@@ -260,8 +267,8 @@ public class AstronomicalObject {
     }
 
     public String getFormattedCoordinates() {
-        if (ra != null && dec != null) {
-            return String.format("RA: %.6f°, Dec: %.6f°", ra, dec);
+        if (ra != null && decl != null) {
+            return String.format("RA: %.6f°, Decl: %.6f°", ra, decl);
         }
         return "No coordinates";
     }

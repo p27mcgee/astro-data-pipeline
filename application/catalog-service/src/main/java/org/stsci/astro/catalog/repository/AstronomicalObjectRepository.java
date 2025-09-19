@@ -73,12 +73,12 @@ public interface AstronomicalObjectRepository extends JpaRepository<Astronomical
     // Box search - find objects within rectangular area
     @Query("SELECT ao FROM AstronomicalObject ao " +
            "WHERE ao.ra BETWEEN :minRa AND :maxRa " +
-           "AND ao.dec BETWEEN :minDec AND :maxDec")
+           "AND ao.decl BETWEEN :minDecl AND :maxDecl")
     List<AstronomicalObject> findInBox(
         @Param("minRa") double minRa,
         @Param("maxRa") double maxRa,
-        @Param("minDec") double minDec,
-        @Param("maxDec") double maxDec
+        @Param("minDecl") double minDecl,
+        @Param("maxDecl") double maxDecl
     );
 
     // Magnitude-based queries
@@ -147,7 +147,7 @@ public interface AstronomicalObjectRepository extends JpaRepository<Astronomical
            "WHERE ao.objectType = :objectType " +
            "AND ao.magnitude BETWEEN :minMag AND :maxMag " +
            "AND ao.ra BETWEEN :minRa AND :maxRa " +
-           "AND ao.dec BETWEEN :minDec AND :maxDec " +
+           "AND ao.decl BETWEEN :minDecl AND :maxDecl " +
            "ORDER BY ao.magnitude")
     Page<AstronomicalObject> findByTypeAndMagnitudeInRegion(
         @Param("objectType") AstronomicalObject.ObjectType objectType,
@@ -155,8 +155,8 @@ public interface AstronomicalObjectRepository extends JpaRepository<Astronomical
         @Param("maxMag") double maxMag,
         @Param("minRa") double minRa,
         @Param("maxRa") double maxRa,
-        @Param("minDec") double minDec,
-        @Param("maxDec") double maxDec,
+        @Param("minDecl") double minDecl,
+        @Param("maxDecl") double maxDecl,
         Pageable pageable
     );
 
@@ -174,7 +174,7 @@ public interface AstronomicalObjectRepository extends JpaRepository<Astronomical
 
     // Proper motion queries
     @Query("SELECT ao FROM AstronomicalObject ao " +
-           "WHERE SQRT(ao.pmRa * ao.pmRa + ao.pmDec * ao.pmDec) >= :minProperMotion")
+           "WHERE SQRT(ao.pmRa * ao.pmRa + ao.pmDecl * ao.pmDecl) >= :minProperMotion")
     List<AstronomicalObject> findHighProperMotionObjects(@Param("minProperMotion") double minProperMotion);
 
     // Parallax and distance queries

@@ -78,8 +78,6 @@ spring:
   config:
     activate:
       on-profile: integration-test
-
-spring:
   datasource:
     url: jdbc:h2:mem:integrationtestdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
     driver-class-name: org.h2.Driver

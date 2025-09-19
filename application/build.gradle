@@ -1,0 +1,215 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.1.5' apply false
+    id 'io.spring.dependency-management' version '1.1.3' apply false
+    id 'jacoco'
+    id 'org.sonarqube' version '5.1.0.4882'
+}
+
+allprojects {
+    group = 'org.stsci.astro'
+    version = '1.0.0'
+
+    repositories {
+        mavenCentral()
+        maven { url 'https://repo1.maven.org/maven2/' }
+    }
+}
+
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'org.springframework.boot'
+    apply plugin: 'io.spring.dependency-management'
+    apply plugin: 'jacoco'
+
+    java {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    configurations {
+        compileOnly {
+            extendsFrom annotationProcessor
+        }
+    }
+
+    ext {
+        springCloudVersion = '2022.0.4'
+        testcontainersVersion = '1.19.1'
+        awsSdkVersion = '2.21.29'
+        micrometerVersion = '1.12.0'
+    }
+
+    dependencyManagement {
+        imports {
+            mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+            mavenBom "org.testcontainers:testcontainers-bom:${testcontainersVersion}"
+        }
+    }
+
+    dependencies {
+        // Spring Boot Core - common to all services
+        implementation 'org.springframework.boot:spring-boot-starter-web'
+        implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+        implementation 'org.springframework.boot:spring-boot-starter-actuator'
+        implementation 'org.springframework.boot:spring-boot-starter-validation'
+        implementation 'org.springframework.boot:spring-boot-starter-security'
+        implementation 'org.springframework.boot:spring-boot-starter-cache'
+
+        // Spring Cloud AWS
+        implementation 'io.awspring.cloud:spring-cloud-aws-starter-s3:3.0.3'
+        implementation 'io.awspring.cloud:spring-cloud-aws-starter-secrets-manager:3.0.3'
+
+        // Database
+        implementation 'org.postgresql:postgresql:42.6.0'
+        implementation 'com.zaxxer:HikariCP:5.0.1'
+        implementation 'org.flywaydb:flyway-core'
+
+        // Metrics and Monitoring
+        implementation "io.micrometer:micrometer-registry-cloudwatch2:${micrometerVersion}"
+        implementation "io.micrometer:micrometer-registry-prometheus:${micrometerVersion}"
+        implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+
+        // JSON Processing
+        implementation 'com.fasterxml.jackson.core:jackson-databind'
+        implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
+
+        // Utilities
+        implementation 'org.apache.commons:commons-lang3:3.13.0'
+        implementation 'org.apache.commons:commons-collections4:4.4'
+        implementation 'com.google.guava:guava:32.1.3-jre'
+
+        // Configuration
+        annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+        // Lombok
+        compileOnly 'org.projectlombok:lombok'
+        annotationProcessor 'org.projectlombok:lombok'
+
+        // Documentation
+        implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.2.0'
+
+        // Common Testing
+        testImplementation 'org.springframework.boot:spring-boot-starter-test'
+        testImplementation 'org.springframework.security:spring-security-test'
+        testImplementation "org.testcontainers:junit-jupiter:${testcontainersVersion}"
+        testImplementation "org.testcontainers:postgresql:${testcontainersVersion}"
+        testImplementation 'com.github.tomakehurst:wiremock-jre8:2.35.0'
+        testImplementation 'org.awaitility:awaitility:4.2.0'
+
+        // Explicit test framework dependencies (fixes deprecation warning)
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+        testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+        testRuntimeOnly 'org.junit.vintage:junit-vintage-engine'
+
+        testCompileOnly 'org.projectlombok:lombok'
+        testAnnotationProcessor 'org.projectlombok:lombok'
+    }
+
+    tasks.named('test') {
+        useJUnitPlatform()
+        systemProperty 'spring.profiles.active', 'test'
+        exclude '**/*IntegrationTest*'
+        exclude '**/*IT*'
+        finalizedBy jacocoTestReport
+    }
+
+    task integrationTest(type: Test) {
+        useJUnitPlatform()
+        systemProperty 'spring.profiles.active', 'integration-test'
+        include '**/*IntegrationTest*'
+        include '**/*IT*'
+        finalizedBy jacocoTestReport
+    }
+
+    jacoco {
+        toolVersion = "0.8.8"
+    }
+
+    jacocoTestReport {
+        dependsOn test, integrationTest
+        reports {
+            xml.required = true
+            html.required = true
+        }
+
+        afterEvaluate {
+            classDirectories.setFrom(files(classDirectories.files.collect {
+                fileTree(dir: it, exclude: [
+                    '**/config/**',
+                    '**/dto/**',
+                    '**/entity/**',
+                    '**/*Application*',
+                    '**/*Config*'
+                ])
+            }))
+        }
+    }
+
+    springBoot {
+        buildInfo()
+    }
+
+    compileJava {
+        options.compilerArgs += ['-parameters', '-Xlint:deprecation']
+        options.encoding = 'UTF-8'
+    }
+
+}
+
+// Root level tasks
+task buildAll {
+    dependsOn subprojects.collect { it.tasks.build }
+    description = 'Build all subprojects'
+}
+
+task testAll {
+    dependsOn subprojects.collect { it.tasks.test }
+    description = 'Run tests for all subprojects'
+}
+
+task integrationTestAll {
+    dependsOn subprojects.collect { it.tasks.integrationTest }
+    description = 'Run integration tests for all subprojects'
+}
+
+task contextVerificationTestAll {
+    dependsOn subprojects.findAll { it.tasks.findByName('contextVerificationTest') != null }
+            .collect { it.tasks.contextVerificationTest }
+    description = 'Run application context verification tests for all subprojects'
+}
+
+task verifyAllContexts {
+    dependsOn contextVerificationTestAll
+    description = 'Verify all Spring application contexts can be created successfully'
+
+    doLast {
+        println "✅ All Spring application contexts verified successfully"
+    }
+}
+
+// Aggregate code coverage
+task jacocoRootReport(type: JacocoReport) {
+    dependsOn = subprojects.jacocoTestReport
+    additionalSourceDirs.from = files(subprojects.sourceSets.main.allSource.srcDirs)
+    sourceDirectories.from = files(subprojects.sourceSets.main.allSource.srcDirs)
+    classDirectories.from = files(subprojects.sourceSets.main.output)
+    executionData.from = files(subprojects.jacocoTestReport.executionData)
+    reports {
+        html.required = true
+        xml.required = true
+        csv.required = false
+    }
+    onlyIf = { true }
+    doFirst {
+        executionData = files(executionData.findAll { it.exists() })
+    }
+}
+
+sonarqube {
+    properties {
+        property "sonar.projectKey", "astro-data-pipeline"
+        property "sonar.projectName", "Astronomical Data Pipeline"
+        property "sonar.coverage.jacoco.xmlReportPaths", "${buildDir}/reports/jacoco/jacocoRootReport/jacocoRootReport.xml"
+    }
+}

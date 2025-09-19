@@ -84,7 +84,7 @@ public class ObjectMatchResult {
     public Double calculatePositionDifference() {
         if (matchedObject != null && queryRa != null && queryDec != null) {
             double deltaRa = (matchedObject.getRa() - queryRa) * Math.cos(Math.toRadians(queryDec));
-            double deltaDec = matchedObject.getDec() - queryDec;
+            double deltaDec = matchedObject.getDecl() - queryDec;
             return Math.sqrt(deltaRa * deltaRa + deltaDec * deltaDec) * 3600.0;
         }
         return separationArcsec;
@@ -103,5 +103,13 @@ public class ObjectMatchResult {
                 getFormattedSeparation(),
                 matchConfidence != null ? matchConfidence * 100 : 0.0,
                 getMatchQuality());
+    }
+
+    // Custom builder method for compatibility
+    public static class ObjectMatchResultBuilder {
+        public ObjectMatchResultBuilder object(AstronomicalObject object) {
+            this.matchedObject = object;
+            return this;
+        }
     }
 }

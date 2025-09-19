@@ -22,6 +22,8 @@ public class ConeSearchResult {
 
     private List<AstronomicalObject> objects;
 
+    private List<ObjectMatch> matches;
+
     private Integer totalResults;
 
     private Integer returnedResults;
@@ -120,5 +122,56 @@ public class ConeSearchResult {
         }
         
         return summary.toString();
+    }
+
+    // Compatibility getters for service layer
+    public Double getCenterRa() {
+        return searchRequest != null ? searchRequest.getCenterRa() : null;
+    }
+
+    public Double getCenterDec() {
+        return searchRequest != null ? searchRequest.getCenterDec() : null;
+    }
+
+    // Custom builder methods for compatibility
+    public static class ConeSearchResultBuilder {
+        public ConeSearchResultBuilder centerRa(Double centerRa) {
+            // This is handled by the searchRequest
+            return this;
+        }
+
+        public ConeSearchResultBuilder centerDec(Double centerDec) {
+            // This is handled by the searchRequest
+            return this;
+        }
+
+        public ConeSearchResultBuilder searchRadiusArcsec(Double searchRadiusArcsec) {
+            // This is handled by the searchRequest
+            return this;
+        }
+
+        public ConeSearchResultBuilder totalMatches(int totalMatches) {
+            this.totalResults = totalMatches;
+            return this;
+        }
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ObjectMatch {
+        private AstronomicalObject object;
+        private Double separationArcsec;
+        private Double separationDegrees;
+        private String matchQuality;
+
+        public AstronomicalObject getObject() {
+            return object;
+        }
+
+        public Double getSeparationArcsec() {
+            return separationArcsec;
+        }
     }
 }
