@@ -40,8 +40,8 @@ public class Detection {
     @Column(name = "ra", nullable = false)
     private Double ra;
 
-    @Column(name = "dec", nullable = false)
-    private Double dec;
+    @Column(name = "decl", nullable = false)
+    private Double decl;
 
     @Column(name = "magnitude")
     private Double magnitude;

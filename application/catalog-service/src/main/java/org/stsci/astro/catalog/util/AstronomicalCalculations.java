@@ -2,6 +2,9 @@ package org.stsci.astro.catalog.util;
 
 import org.springframework.stereotype.Component;
 import lombok.extern.slf4j.Slf4j;
+import org.locationtech.jts.geom.Point;
+import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.GeometryFactory;
 
 /**
  * Utility class for astronomical calculations
@@ -9,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 @Slf4j
 public class AstronomicalCalculations {
+
+    private final GeometryFactory geometryFactory = new GeometryFactory();
 
     private static final double DEG_TO_RAD = Math.PI / 180.0;
     private static final double RAD_TO_DEG = 180.0 / Math.PI;
@@ -245,5 +250,41 @@ public class AstronomicalCalculations {
      */
     public double clampDec(double dec) {
         return Math.max(-90.0, Math.min(90.0, dec));
+    }
+
+    /**
+     * Create a PostGIS Point geometry from RA/Dec coordinates
+     *
+     * @param ra Right ascension in degrees
+     * @param dec Declination in degrees
+     * @return PostGIS Point geometry
+     */
+    public Point createPoint(Double ra, Double dec) {
+        if (ra == null || dec == null) {
+            return null;
+        }
+
+        // Validate coordinates
+        if (!isValidCoordinates(ra, dec)) {
+            log.warn("Invalid coordinates provided: RA={}, Dec={}", ra, dec);
+            return null;
+        }
+
+        // Create coordinate (longitude, latitude) format for PostGIS
+        Coordinate coord = new Coordinate(ra, dec);
+        Point point = geometryFactory.createPoint(coord);
+        point.setSRID(4326); // WGS84 coordinate system
+
+        return point;
+    }
+
+    /**
+     * Calculate separation between two points - alias for angularDistance
+     */
+    public double calculateSeparation(Double ra1, Double dec1, Double ra2, Double dec2) {
+        if (ra1 == null || dec1 == null || ra2 == null || dec2 == null) {
+            return Double.NaN;
+        }
+        return angularDistance(ra1, dec1, ra2, dec2);
     }
 }

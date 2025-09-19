@@ -51,7 +51,7 @@ CREATE TABLE observations (
     -- Coordinates and pointing
     target_name VARCHAR(200),
     ra DOUBLE PRECISION NOT NULL, -- Right Ascension in degrees
-    dec DOUBLE PRECISION NOT NULL, -- Declination in degrees
+    decl DOUBLE PRECISION NOT NULL, -- Declination in degrees
     galactic_l DOUBLE PRECISION, -- Galactic longitude
     galactic_b DOUBLE PRECISION, -- Galactic latitude
     position GEOMETRY(POINT, 4326), -- Spatial index for efficient querying
@@ -86,7 +86,7 @@ CREATE TABLE observations (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     
     -- Constraints
-    CONSTRAINT valid_coordinates CHECK (ra >= 0 AND ra < 360 AND dec >= -90 AND dec <= 90),
+    CONSTRAINT valid_coordinates CHECK (ra >= 0 AND ra < 360 AND decl >= -90 AND decl <= 90),
     CONSTRAINT valid_exposure_time CHECK (exposure_time > 0),
     CONSTRAINT valid_airmass CHECK (airmass >= 1.0)
 );
@@ -102,16 +102,16 @@ CREATE TABLE astronomical_objects (
     
     -- Position (J2000 epoch)
     ra DOUBLE PRECISION NOT NULL,
-    dec DOUBLE PRECISION NOT NULL,
+    decl DOUBLE PRECISION NOT NULL,
     ra_error_mas DOUBLE PRECISION, -- milliarcseconds
-    dec_error_mas DOUBLE PRECISION,
+    decl_error_mas DOUBLE PRECISION,
     position GEOMETRY(POINT, 4326),
     
     -- Proper motion (mas/year)
     pm_ra DOUBLE PRECISION DEFAULT 0,
-    pm_dec DOUBLE PRECISION DEFAULT 0,
+    pm_decl DOUBLE PRECISION DEFAULT 0,
     pm_ra_error DOUBLE PRECISION,
-    pm_dec_error DOUBLE PRECISION,
+    pm_decl_error DOUBLE PRECISION,
     
     -- Parallax
     parallax_mas DOUBLE PRECISION,
@@ -168,7 +168,7 @@ CREATE TABLE astronomical_objects (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     
     -- Constraints
-    CONSTRAINT valid_coordinates CHECK (ra >= 0 AND ra < 360 AND dec >= -90 AND dec <= 90),
+    CONSTRAINT valid_coordinates CHECK (ra >= 0 AND ra < 360 AND decl >= -90 AND decl <= 90),
     CONSTRAINT valid_magnitude CHECK (magnitude BETWEEN -30 AND 50),
     CONSTRAINT valid_temperature CHECK (effective_temperature IS NULL OR effective_temperature > 0)
 );
@@ -188,9 +188,9 @@ CREATE TABLE detections (
     
     -- World coordinates for this detection
     ra DOUBLE PRECISION NOT NULL,
-    dec DOUBLE PRECISION NOT NULL,
+    decl DOUBLE PRECISION NOT NULL,
     ra_error_mas DOUBLE PRECISION,
-    dec_error_mas DOUBLE PRECISION,
+    decl_error_mas DOUBLE PRECISION,
     
     -- Photometry for this detection
     magnitude DOUBLE PRECISION,
@@ -223,7 +223,7 @@ CREATE TABLE detections (
     
     -- Constraints
     CONSTRAINT valid_pixel_coords CHECK (pixel_x >= 0 AND pixel_y >= 0),
-    CONSTRAINT valid_detection_coords CHECK (ra >= 0 AND ra < 360 AND dec >= -90 AND dec <= 90)
+    CONSTRAINT valid_detection_coords CHECK (ra >= 0 AND ra < 360 AND decl >= -90 AND decl <= 90)
 );
 
 -- Catalog cross-matches for external reference
@@ -282,8 +282,8 @@ CREATE INDEX idx_observations_position ON observations USING GIST (position);
 CREATE INDEX idx_objects_position ON astronomical_objects USING GIST (position);
 
 -- Coordinate indexes for cone searches
-CREATE INDEX idx_observations_radec ON observations (ra, dec);
-CREATE INDEX idx_objects_radec ON astronomical_objects (ra, dec);
+CREATE INDEX idx_observations_radec ON observations (ra, decl);
+CREATE INDEX idx_objects_radec ON astronomical_objects (ra, decl);
 
 -- Time-based indexes
 CREATE INDEX idx_observations_date ON observations (observation_date);
@@ -306,17 +306,17 @@ CREATE INDEX idx_quality_observation_id ON image_quality (observation_id);
 CREATE INDEX idx_observations_telescope_instrument ON observations (telescope, instrument);
 CREATE INDEX idx_observations_date_quality ON observations (observation_date, quality_flag);
 CREATE INDEX idx_objects_type_magnitude ON astronomical_objects (object_type, magnitude);
-CREATE INDEX idx_detections_obs_ra_dec ON detections (observation_id, ra, dec);
+CREATE INDEX idx_detections_obs_ra_dec ON detections (observation_id, ra, decl);
 
 -- JSONB indexes for efficient querying of flexible data
 CREATE INDEX idx_objects_photometry ON astronomical_objects USING GIN (photometry);
 CREATE INDEX idx_crossmatches_catalog_data ON catalog_crossmatches USING GIN (catalog_data);
 
--- Trigger to automatically update position geometry from ra/dec
+-- Trigger to automatically update position geometry from ra/decl
 CREATE OR REPLACE FUNCTION update_position_geometry()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.position = ST_Point(NEW.ra, NEW.dec);
+    NEW.position = ST_Point(NEW.ra, NEW.decl);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -340,15 +340,15 @@ CREATE OR REPLACE FUNCTION cone_search(
 RETURNS TABLE(
     object_id VARCHAR,
     ra DOUBLE PRECISION,
-    dec DOUBLE PRECISION,
+    decl DOUBLE PRECISION,
     separation_arcsec DOUBLE PRECISION
 ) AS $$
 BEGIN
     RETURN QUERY
-    SELECT 
+    SELECT
         ao.object_id,
         ao.ra,
-        ao.dec,
+        ao.decl,
         ST_Distance(
             ST_Point(center_ra, center_dec)::geography,
             ao.position::geography
@@ -365,11 +365,11 @@ $$ LANGUAGE plpgsql;
 
 -- Create view for commonly used object summary
 CREATE VIEW object_summary AS
-SELECT 
+SELECT
     ao.object_id,
     ao.object_type,
     ao.ra,
-    ao.dec,
+    ao.decl,
     ao.magnitude,
     ao.photometric_system,
     ao.is_variable,

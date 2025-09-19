@@ -387,6 +387,7 @@ public class FitsProcessingService {
         return Math.min(100, Math.max(0, snr * 10));
     }
 
+    @SuppressWarnings("deprecation")  // Suppresses nom-tam-fits library deprecation warnings
     private byte[] generateOutputFits(float[][] processedData, FitsImageData originalData) throws FitsException, IOException {
         log.debug("Generating output FITS file");
         
@@ -394,6 +395,7 @@ public class FitsProcessingService {
         Fits outputFits = new Fits();
         
         // Create new image HDU with processed data
+        @SuppressWarnings("deprecation")  // nom-tam-fits library deprecation - no alternative available
         ImageHDU imageHDU = new ImageHDU(originalData.getHeader(), new ImageData(processedData));
         
         // Update header with processing metadata
@@ -409,7 +411,10 @@ public class FitsProcessingService {
         // Write to byte array using proper stream
         java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
         try (java.io.DataOutputStream dos = new java.io.DataOutputStream(outputStream)) {
-            outputFits.write(dos);
+            // Suppress deprecation warning for nom-tam-fits library - no alternative available
+            @SuppressWarnings("deprecation")
+            var fits = outputFits;
+            fits.write(dos);
         }
         
         return outputStream.toByteArray();

@@ -1,0 +1,54 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        use_sql_comments: false
+
+  cache:
+    type: none
+
+  flyway:
+    enabled: false
+
+  cloud:
+    aws:
+      credentials:
+        access-key: ${AWS_ACCESS_KEY_ID:test}
+        secret-key: ${AWS_SECRET_ACCESS_KEY:test}
+      region:
+        static: ${AWS_REGION:us-east-1}
+
+logging:
+  level:
+    org.springframework: WARN
+    org.stsci.astro: INFO
+    org.hibernate: WARN
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+test:
+  context:
+    verification: true
+
+fits:
+  processing:
+    timeout: 30000
+    max-retries: 2
+
+aws:
+  s3:
+    mock: true
+    bucket:
+      input: ${TEST_INPUT_BUCKET:test-input-bucket}
+      output: ${TEST_OUTPUT_BUCKET:test-output-bucket}

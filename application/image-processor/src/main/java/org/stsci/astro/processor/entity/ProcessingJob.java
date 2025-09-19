@@ -45,6 +45,9 @@ public class ProcessingJob {
     @Column(name = "output_object_key")
     private String outputObjectKey;
 
+    @Column(name = "user_id")
+    private String userId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private ProcessingStatus status;

@@ -63,7 +63,7 @@ public class CatalogService {
                 .map(obj -> {
                     double separation = astroCalculations.calculateSeparation(
                             request.getCenterRa(), request.getCenterDec(),
-                            obj.getRa(), obj.getDec()
+                            obj.getRa(), obj.getDecl()
                     );
                     return ConeSearchResult.ObjectMatch.builder()
                             .object(obj)
@@ -149,8 +149,8 @@ public class CatalogService {
         log.debug("Saving astronomical object: {}", object.getObjectId());
 
         // Update position geometry if coordinates are provided
-        if (object.getRa() != null && object.getDec() != null) {
-            object.setPosition(astroCalculations.createPoint(object.getRa(), object.getDec()));
+        if (object.getRa() != null && object.getDecl() != null) {
+            object.setPosition(astroCalculations.createPoint(object.getRa(), object.getDecl()));
         }
 
         // Calculate distance from parallax if available
