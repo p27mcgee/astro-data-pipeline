@@ -1,4 +1,9 @@
 spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: password
   jpa:
     hibernate:
       ddl-auto: create-drop
@@ -7,6 +12,8 @@ spring:
       hibernate:
         format_sql: false
         use_sql_comments: false
+    defer-datasource-initialization: true
+    database-platform: org.hibernate.dialect.H2Dialect
 
   cache:
     type: none

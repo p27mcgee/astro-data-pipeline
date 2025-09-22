@@ -79,7 +79,7 @@ jobs:
           --failOnCVSS 7
 
     - name: Upload OWASP Dependency Check results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: dependency-check-report-${{ matrix.service }}
@@ -93,7 +93,7 @@ jobs:
         ./gradlew dependencyCheckAnalyze --info
 
     - name: Upload Gradle audit results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: gradle-audit-${{ matrix.service }}
@@ -114,7 +114,7 @@ jobs:
 
     - name: Upload Python security reports
       if: matrix.service == 'data-simulator'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: python-security-reports
         path: |
@@ -200,7 +200,7 @@ jobs:
         ./gradlew spotbugsMain spotbugsTest
 
     - name: Upload SpotBugs results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: spotbugs-reports
@@ -223,7 +223,7 @@ jobs:
         bandit -r . -f json -o bandit-security-report.json || true
 
     - name: Upload static analysis results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: static-analysis-reports
@@ -315,7 +315,7 @@ jobs:
         docker run --rm -i hadolint/hadolint < application/${{ matrix.service }}/Dockerfile > hadolint-${{ matrix.service }}.txt || true
 
     - name: Upload container scan results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: container-security-${{ matrix.service }}
@@ -394,7 +394,7 @@ jobs:
         fi
 
     - name: Upload infrastructure security reports
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: infrastructure-security-reports
@@ -435,7 +435,7 @@ jobs:
         detect-secrets audit .secrets.baseline || true
 
     - name: Upload secrets scan results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: secrets-scan-results
@@ -498,7 +498,7 @@ jobs:
         echo "CIS Kubernetes Benchmark check completed" > cis-benchmark-results.txt
 
     - name: Upload compliance scan results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: compliance-scan-results
@@ -560,7 +560,7 @@ jobs:
         cat security-summary.md >> $GITHUB_STEP_SUMMARY
 
     - name: Upload security summary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: security-summary-report
         path: security-summary.md

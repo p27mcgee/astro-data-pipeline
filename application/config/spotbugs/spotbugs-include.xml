@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- Include all packages by default -->
+    <Match>
+        <Package name="~org\.stsci\.astro\..*"/>
+    </Match>
+
+    <!-- Include specific bug patterns for astronomical software -->
+    <Match>
+        <Bug pattern="SQL_NONCONSTANT_STRING_PASSED_TO_EXECUTE"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="HARD_CODE_PASSWORD"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="WEAK_MESSAGE_DIGEST_MD5"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="WEAK_MESSAGE_DIGEST_SHA1"/>
+    </Match>
+
+    <!-- Security-related bugs for astronomical data processing -->
+    <Match>
+        <Bug pattern="PATH_TRAVERSAL_IN"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="COMMAND_INJECTION"/>
+    </Match>
+
+    <!-- Performance issues critical for large astronomical datasets -->
+    <Match>
+        <Bug pattern="DM_NUMBER_CTOR"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="DM_BOXED_PRIMITIVE_FOR_PARSING"/>
+    </Match>
+
+    <!-- Null pointer and resource management for FITS processing -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="OS_OPEN_STREAM"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE"/>
+    </Match>
+</FindBugsFilter>

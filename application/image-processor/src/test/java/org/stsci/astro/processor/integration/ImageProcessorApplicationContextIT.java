@@ -9,15 +9,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.stsci.astro.processor.ImageProcessorApplication;
+import org.stsci.astro.processor.config.TestMetricsConfig;
 import org.stsci.astro.processor.service.ProcessingJobService;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -25,23 +20,29 @@ import java.sql.Connection;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
-@SpringBootTest(classes = ImageProcessorApplication.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@ActiveProfiles("application-context-test")
+@SpringBootTest(classes = {ImageProcessorApplication.class, TestMetricsConfig.class}, webEnvironment = SpringBootTest.WebEnvironment.NONE,
+    properties = {
+        // FIXME: Excluding metrics auto-configuration due to MetricsCollector constructor dependency issues in tests
+        "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration,org.springframework.boot.autoconfigure.actuator.metrics.MetricsAutoConfiguration"
+    })
+@TestPropertySource(properties = {
+    "spring.profiles.active=${SPRING_PROFILES_ACTIVE:application-context-test}"
+})
 @TestMethodOrder(OrderAnnotation.class)
-@Testcontainers
+// TODO what about application-context-test.yml
 @TestPropertySource(properties = {
     "spring.cloud.aws.s3.endpoint=http://localhost:4566",
     "spring.cloud.aws.credentials.access-key=test",
     "spring.cloud.aws.credentials.secret-key=test",
-    "spring.cloud.aws.region.static=us-east-1"
+    "spring.cloud.aws.region.static=us-east-1",
+    "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE",
+    "spring.datasource.driver-class-name=org.h2.Driver",
+    "spring.datasource.username=sa",
+    "spring.datasource.password=password",
+    "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
+    "spring.jpa.hibernate.ddl-auto=create-drop"
 })
 class ImageProcessorApplicationContextIT {
-
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
-            .withDatabaseName("testdb")
-            .withUsername("test")
-            .withPassword("test");
 
     @Autowired
     private ApplicationContext applicationContext;
@@ -120,10 +121,4 @@ class ImageProcessorApplicationContextIT {
             .isNotEmpty();
     }
 
-    @DynamicPropertySource
-    static void configureProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-    }
 }

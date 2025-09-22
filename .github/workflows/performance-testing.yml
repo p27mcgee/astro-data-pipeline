@@ -293,7 +293,7 @@ jobs:
         fi
 
     - name: Upload load test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: load-test-results
@@ -403,7 +403,7 @@ jobs:
         k6 run --out json=stress_test_results.json stress_test.js
 
     - name: Upload stress test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: stress-test-results
@@ -622,7 +622,7 @@ jobs:
         python db_performance.py || echo "Database performance test completed with warnings"
 
     - name: Upload database test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: database-performance-results
@@ -743,7 +743,7 @@ jobs:
         cat performance_analysis_report.md >> $GITHUB_STEP_SUMMARY
 
     - name: Upload performance analysis report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: performance-analysis-report
         path: performance_analysis_report.md

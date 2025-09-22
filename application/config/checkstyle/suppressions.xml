@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+        "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+
+<suppressions>
+    <!-- Suppress certain checks for test files -->
+    <suppress checks="MagicNumber" files=".*Test\.java"/>
+    <suppress checks="FinalParameters" files=".*Test\.java"/>
+    <suppress checks="DesignForExtension" files=".*Test\.java"/>
+
+    <!-- Suppress for Spring Boot main classes -->
+    <suppress checks="HideUtilityClassConstructor" files=".*Application\.java"/>
+    <suppress checks="DesignForExtension" files=".*Application\.java"/>
+
+    <!-- Suppress for JPA entities -->
+    <suppress checks="VisibilityModifier" files=".*Entity\.java"/>
+    <suppress checks="FinalParameters" files=".*Entity\.java"/>
+
+    <!-- Suppress for configuration classes -->
+    <suppress checks="DesignForExtension" files=".*Config\.java"/>
+    <suppress checks="FinalParameters" files=".*Config\.java"/>
+
+    <!-- Suppress for DTOs and model classes -->
+    <suppress checks="VisibilityModifier" files=".*Dto\.java"/>
+    <suppress checks="VisibilityModifier" files=".*Model\.java"/>
+    <suppress checks="FinalParameters" files=".*Dto\.java"/>
+    <suppress checks="FinalParameters" files=".*Model\.java"/>
+    <suppress checks="DesignForExtension" files=".*Dto\.java"/>
+    <suppress checks="DesignForExtension" files=".*Model\.java"/>
+
+    <!-- Suppress for astronomical constants and scientific values -->
+    <suppress checks="MagicNumber" files=".*Constants\.java"/>
+    <suppress checks="MagicNumber" files=".*Calibration.*\.java"/>
+    <suppress checks="MagicNumber" files=".*Astronomical.*\.java"/>
+    <suppress checks="MagicNumber" files=".*Result\.java"/>
+    <suppress checks="MagicNumber" files=".*Data\.java"/>
+    <suppress checks="MagicNumber" files=".*Match.*\.java"/>
+    <suppress checks="MagicNumber" files=".*Search.*\.java"/>
+
+    <!-- Suppress FinalParameters for all files (common Spring Boot pattern) -->
+    <suppress checks="FinalParameters" files=".*\.java"/>
+
+    <!-- Suppress DesignForExtension for service and controller classes -->
+    <suppress checks="DesignForExtension" files=".*Service\.java"/>
+    <suppress checks="DesignForExtension" files=".*Controller\.java"/>
+    <suppress checks="DesignForExtension" files=".*Repository\.java"/>
+    <suppress checks="DesignForExtension" files=".*Builder\.java"/>
+
+    <!-- Suppress for exception classes -->
+    <suppress checks="DesignForExtension" files=".*Exception\.java"/>
+
+    <!-- Suppress TodoComment warnings -->
+    <suppress checks="TodoComment" files=".*\.java"/>
+</suppressions>

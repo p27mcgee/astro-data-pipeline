@@ -227,7 +227,7 @@ jobs:
         fi
 
     - name: Publish Terraform Plan
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: tfplan-staging
         path: terraform/tfplan-staging
@@ -333,7 +333,7 @@ jobs:
         fi
 
     - name: Publish Terraform Plan
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: tfplan-production
         path: terraform/tfplan-production
@@ -408,7 +408,7 @@ jobs:
         echo "Infrastructure successfully applied to staging environment" >> $GITHUB_STEP_SUMMARY
 
     - name: Upload Terraform Outputs
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: terraform-outputs-staging
         path: terraform/terraform-outputs-staging.json
@@ -486,7 +486,7 @@ jobs:
         echo "Infrastructure successfully applied to production environment" >> $GITHUB_STEP_SUMMARY
 
     - name: Upload Terraform Outputs
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: terraform-outputs-production
         path: terraform/terraform-outputs-production.json
