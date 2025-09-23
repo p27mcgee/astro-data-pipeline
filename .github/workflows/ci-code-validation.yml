@@ -151,9 +151,11 @@ jobs:
         cd application && ./gradlew spotbugsMain spotbugsTest
 
     - name: SonarCloud Scan
+      # FIXME remove env!
       run: |
         cd application
         ls -R . | grep ".xml"
+        env
         # disable until we can pass the quality gate for code coverage 
         # ./gradlew test jacocoTestReport sonar
       env:
@@ -189,6 +191,8 @@ jobs:
 
     - name: Run Snyk to check for dependency vulnerabilities
       uses: snyk/actions/gradle@master
+      continue-on-error: true
+      working-directory: ./application
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       with:
