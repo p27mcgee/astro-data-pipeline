@@ -153,7 +153,7 @@ jobs:
     - name: SonarCloud Scan
       run: |
         cd application
-        ls -R .
+        ls -R . | grep ".xml"
         # disable until we can pass the quality gate for code coverage 
         # ./gradlew test jacocoTestReport sonar
       env:
@@ -170,14 +170,9 @@ jobs:
 
       # ========== Build Applications (No Image Publishing) ==========
 
-    - name: Build Image Processor
+    - name: Build
       run: |
-        cd application/image-processor
-        ./gradlew clean build -x test
-
-    - name: Build Catalog Service
-      run: |
-        cd application/catalog-service
+        cd application
         ./gradlew clean build -x test
 
     - name: Upload build artifacts
