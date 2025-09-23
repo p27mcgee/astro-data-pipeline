@@ -191,8 +191,6 @@ jobs:
 
     - name: Run Snyk to check for dependency vulnerabilities
       uses: snyk/actions/gradle@master
-      continue-on-error: true
-      working-directory: ./application
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       with:
