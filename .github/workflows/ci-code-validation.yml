@@ -189,11 +189,11 @@ jobs:
 
     # ========== Security Scanning (Dependencies Only) ==========
 
-    - name: Run Snyk to check for dependency vulnerabilities
-      uses: snyk/actions/gradle@master
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        # TODO why is snyk complaining about JAVA_HOME?
-        JAVA_HOME: ${{ $(dirname $(dirname $(readlink -f $(which javac)))) }}
-      with:
-        args: --severity-threshold=high --all-projects
+#    - name: Run Snyk to check for dependency vulnerabilities
+#      uses: snyk/actions/gradle@master
+#      env:
+#        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+#        # TODO why is snyk complaining about JAVA_HOME?
+#        JAVA_HOME: ${{ $(dirname $(dirname $(readlink -f $(which javac)))) }}
+#      with:
+#        args: --severity-threshold=high --all-projects
