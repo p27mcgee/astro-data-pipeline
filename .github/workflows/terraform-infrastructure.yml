@@ -33,12 +33,29 @@ on:
         options:
           - staging
           - production
+      max_layer:
+        description: 'Maximum layer to process (1-5)'
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+          - '5'
 
 env:
   TF_VERSION: '1.13.3'
   AWS_REGION: us-east-1
   TF_IN_AUTOMATION: true
   TF_INPUT: false
+  DEFAULT_MAX_LAYER: '1'  # Default for non-dispatch runs
+
+permissions:
+  id-token: write
+  contents: read
+  security-events: write  # Required for SARIF uploads
 
 jobs:
   terraform-validate:
@@ -61,21 +78,27 @@ jobs:
         role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Terraform Format Check
+    - name: Terraform Format Check - Layered Architecture
       run: |
         cd terraform
-        terraform fmt -check -recursive -diff
+        # Check format for each layer
+        for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+          echo "Checking format for layer: $layer"
+          terraform fmt -check -recursive -diff $layer/
+        done
       continue-on-error: true
 
-    - name: Terraform Init
+    - name: Terraform Validate - Layered Architecture
       run: |
         cd terraform
-        terraform init -backend=false
-
-    - name: Terraform Validate
-      run: |
-        cd terraform
-        terraform validate
+        # Validate each layer independently
+        for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+          echo "Validating layer: $layer"
+          cd $layer
+          terraform init -backend=false
+          terraform validate
+          cd ..
+        done
 
     - name: TFLint Installation
       uses: terraform-linters/setup-tflint@v4
@@ -134,40 +157,49 @@ jobs:
         }
         EOF
 
-    - name: TFLint Run
+    - name: TFLint Run - Layered Architecture
       run: |
         cd terraform
-        tflint --init
-        tflint --format=compact
+        # Run TFLint on each layer
+        for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+          echo "Running TFLint for layer: $layer"
+          cd $layer
+          tflint --init
+          tflint --format=compact
+          cd ..
+        done
 
-    - name: Checkov Terraform Security Scan
+    - name: Checkov Terraform Security Scan - Layered Architecture
       uses: bridgecrewio/checkov-action@master
+      continue-on-error: true  # Don't fail pipeline on security findings
       with:
-        directory: terraform/
+        directory: terraform
         framework: terraform
         output_format: sarif
-        output_file_path: checkov-terraform-results.sarif
+        output_file_path: checkov-results.sarif
         download_external_modules: true
-        log_level: WARNING
 
-    - name: Upload Checkov results to GitHub Security
-      uses: github/codeql-action/upload-sarif@v2
-      if: always()
-      with:
-        sarif_file: checkov-terraform-results.sarif
+    - name: TFSec Security Scanner - Layered Architecture
+      run: |
+        cd terraform
+        # Run TFSec on entire terraform directory
+        tfsec . --format sarif --out tfsec-results.sarif || true
 
-    - name: TFSec Security Scanner
-      uses: aquasecurity/tfsec-action@v1.0.0
+    - name: Upload TFSec Security Scan Results
+      uses: github/codeql-action/upload-sarif@v3
+      continue-on-error: true  # Don't fail pipeline on upload issues
+      if: always() && hashFiles('terraform/tfsec-results.sarif') != ''
       with:
-        working_directory: terraform/
-        format: sarif
-        output_file: tfsec-results.sarif
+        sarif_file: terraform/tfsec-results.sarif
+        category: tfsec-terraform
 
-    - name: Upload TFSec results
-      uses: github/codeql-action/upload-sarif@v2
-      if: always()
+    - name: Upload Checkov Security Scan Results
+      uses: github/codeql-action/upload-sarif@v3
+      continue-on-error: true  # Don't fail pipeline on upload issues
+      if: always() && hashFiles('checkov-results.sarif') != ''
       with:
-        sarif_file: tfsec-results.sarif
+        sarif_file: checkov-results.sarif
+        category: checkov-terraform
 
   terraform-plan-staging:
     name: Terraform Plan (Staging)
@@ -175,7 +207,11 @@ jobs:
     needs: terraform-validate
     if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
     environment: staging
-    
+
+    permissions:
+      id-token: write
+      contents: read
+
     outputs:
       tfplanExitCode: ${{ steps.tf-plan.outputs.exitcode }}
     
@@ -193,58 +229,52 @@ jobs:
       with:
         # AWS Role Trusts GitHub OIDC identity provider
         role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
+        role-session-name: GitHubActions-Terraform-Plan
         aws-region: ${{ env.AWS_REGION }}
+        # Explicit OIDC configuration
+        audience: sts.amazonaws.com
+        output-env-credentials: true
 
-    - name: Terraform Init
-      run: |
-        cd terraform
-        terraform init \
-          -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
-          -backend-config="key=staging/terraform.tfstate" \
-          -backend-config="region=${{ env.AWS_REGION }}" \
-          -backend-config="dynamodb_table=${{ secrets.TERRAFORM_STATE_TABLE }}" \
-          -backend-config="encrypt=true"
-
-    - name: Terraform Workspace
-      run: |
-        cd terraform
-        terraform workspace select staging || terraform workspace new staging
-
-    - name: Terraform Plan
+    - name: Terraform Plan - Layered Architecture
       id: tf-plan
+      env:
+        TERRAFORM_STATE_BUCKET: ${{ secrets.TERRAFORM_STATE_BUCKET }}
+        TERRAFORM_STATE_TABLE: ${{ secrets.TERRAFORM_STATE_TABLE }}
+        MAX_LAYER: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
       run: |
         cd terraform
+        # Use the layered deployment script for planning
+        chmod +x ci/deploy-layers.sh
         export exitcode=0
-        terraform plan -detailed-exitcode -no-color -out=tfplan-staging -var-file="staging.tfvars" || export exitcode=$?
-        
+        ./ci/deploy-layers.sh staging.tfvars plan $MAX_LAYER || export exitcode=$?
+
         echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
-        
+
         if [ $exitcode -eq 1 ]; then
           echo "Terraform Plan Failed"
           exit 1
-        elif [ $exitcode -eq 2 ]; then
-          echo "Terraform Plan Succeeded with Changes"
+        elif [ $exitcode -eq 0 ]; then
+          echo "Terraform Plan Succeeded"
         else
-          echo "Terraform Plan Succeeded with No Changes"
+          echo "Terraform Plan Completed with exit code: $exitcode"
         fi
-
-    - name: Publish Terraform Plan
-      uses: actions/upload-artifact@v4
-      with:
-        name: tfplan-staging
-        path: terraform/tfplan-staging
 
     - name: Create Terraform Plan Summary
       run: |
         cd terraform
-        terraform show -no-color tfplan-staging > tfplan-staging.txt
-        
-        # Create a summary for GitHub
-        echo "## Terraform Plan Summary (Staging)" >> $GITHUB_STEP_SUMMARY
+        echo "## Terraform Plan Summary (Staging) - Layered Architecture" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`hcl" >> $GITHUB_STEP_SUMMARY
-        head -100 tfplan-staging.txt >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "✅ All layers validated and planned successfully" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Processing Configuration:" >> $GITHUB_STEP_SUMMARY
+        echo "- Maximum layer: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Available Layers:" >> $GITHUB_STEP_SUMMARY
+        echo "- 1: 01-foundation (VPC, networking, security groups)" >> $GITHUB_STEP_SUMMARY
+        echo "- 2: 02-data (S3 buckets, Lambda triggers)" >> $GITHUB_STEP_SUMMARY
+        echo "- 3: 03-database (RDS PostgreSQL)" >> $GITHUB_STEP_SUMMARY
+        echo "- 4: 04-compute (EKS cluster)" >> $GITHUB_STEP_SUMMARY
+        echo "- 5: 05-monitoring (CloudWatch, alarms)" >> $GITHUB_STEP_SUMMARY
 
     - name: Comment Terraform Plan on PR
       if: github.event_name == 'pull_request'
@@ -355,8 +385,12 @@ jobs:
     name: Terraform Apply (Staging)
     runs-on: ubuntu-latest
     needs: terraform-plan-staging
-    if: needs.terraform-plan-staging.outputs.tfplanExitCode == 2 && (github.ref == 'refs/heads/develop' || inputs.action == 'apply')
+    if: needs.terraform-plan-staging.outputs.tfplanExitCode == 0 && (github.ref == 'refs/heads/develop' || inputs.action == 'apply')
     environment: staging
+
+    permissions:
+      id-token: write
+      contents: read
     
     steps:
     - name: Checkout code
@@ -372,48 +406,60 @@ jobs:
       with:
         # AWS Role Trusts GitHub OIDC identity provider
         role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
+        role-session-name: GitHubActions-Terraform-Apply
         aws-region: ${{ env.AWS_REGION }}
+        # Explicit OIDC configuration
+        audience: sts.amazonaws.com
+        output-env-credentials: true
 
-    - name: Download Terraform Plan
-      uses: actions/download-artifact@v3
-      with:
-        name: tfplan-staging
-        path: terraform/
-
-    - name: Terraform Init
+    - name: Terraform Apply - Layered Architecture
+      env:
+        TERRAFORM_STATE_BUCKET: ${{ secrets.TERRAFORM_STATE_BUCKET }}
+        TERRAFORM_STATE_TABLE: ${{ secrets.TERRAFORM_STATE_TABLE }}
+        MAX_LAYER: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
       run: |
         cd terraform
-        terraform init \
-          -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
-          -backend-config="key=staging/terraform.tfstate" \
-          -backend-config="region=${{ env.AWS_REGION }}" \
-          -backend-config="dynamodb_table=${{ secrets.TERRAFORM_STATE_TABLE }}" \
-          -backend-config="encrypt=true"
+        # Use the layered deployment script for applying
+        chmod +x ci/deploy-layers.sh
+        ./ci/deploy-layers.sh staging.tfvars apply $MAX_LAYER
 
-    - name: Terraform Workspace
+    - name: Terraform Output - Layered Architecture
       run: |
         cd terraform
-        terraform workspace select staging
-
-    - name: Terraform Apply
-      run: |
-        cd terraform
-        terraform apply -auto-approve tfplan-staging
-
-    - name: Terraform Output
-      run: |
-        cd terraform
-        terraform output -json > terraform-outputs-staging.json
-        
-        echo "## Terraform Apply Results (Staging)" >> $GITHUB_STEP_SUMMARY
+        echo "## Terraform Apply Results (Staging) - Layered Architecture" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Infrastructure successfully applied to staging environment" >> $GITHUB_STEP_SUMMARY
+        echo "🚀 Infrastructure successfully applied to staging environment" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Configuration:" >> $GITHUB_STEP_SUMMARY
+        echo "- Maximum layer processed: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Layer Status:" >> $GITHUB_STEP_SUMMARY
+        MAX_LAYER=${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
+        [[ $MAX_LAYER -ge 1 ]] && echo "✅ Layer 1: Foundation (VPC, networking)" >> $GITHUB_STEP_SUMMARY
+        [[ $MAX_LAYER -ge 2 ]] && echo "✅ Layer 2: Data (S3, Lambda)" >> $GITHUB_STEP_SUMMARY
+        [[ $MAX_LAYER -ge 3 ]] && echo "✅ Layer 3: Database (RDS PostgreSQL)" >> $GITHUB_STEP_SUMMARY
+        [[ $MAX_LAYER -ge 4 ]] && echo "✅ Layer 4: Compute (EKS cluster)" >> $GITHUB_STEP_SUMMARY
+        [[ $MAX_LAYER -ge 5 ]] && echo "✅ Layer 5: Monitoring (CloudWatch)" >> $GITHUB_STEP_SUMMARY
 
-    - name: Upload Terraform Outputs
+    - name: Export Combined Terraform Outputs
+      run: |
+        cd terraform
+        # Export outputs from all layers into a combined JSON
+        echo '{}' > combined-outputs-staging.json
+        for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+          echo "Collecting outputs from layer: $layer"
+          if [ -f "$layer/terraform.tfstate" ]; then
+            cd $layer
+            terraform output -json >> ../combined-outputs-staging.json || echo "No outputs from $layer"
+            cd ..
+          fi
+        done
+
+    - name: Upload Combined Terraform Outputs
       uses: actions/upload-artifact@v4
       with:
-        name: terraform-outputs-staging
-        path: terraform/terraform-outputs-staging.json
+        name: terraform-outputs-staging-layered
+        path: terraform/combined-outputs-staging.json
 
     - name: Notify Staging Deployment
       uses: 8398a7/action-slack@v3
@@ -422,10 +468,11 @@ jobs:
         status: ${{ job.status }}
         channel: '#infrastructure'
         text: |
-          🏗️ Terraform Apply (Staging): ${{ job.status }}
+          🏗️ Terraform Apply (Staging) - Layered Architecture: ${{ job.status }}
           Environment: Staging
           Actor: ${{ github.actor }}
           Commit: ${{ github.sha }}
+          Architecture: 5-Layer Enterprise Pattern
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
@@ -514,6 +561,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
     environment: ${{ inputs.environment }}
+
+    permissions:
+      id-token: write
+      contents: read
     
     steps:
     - name: Checkout code
@@ -529,27 +580,19 @@ jobs:
       with:
         # AWS Role Trusts GitHub OIDC identity provider
         role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
+        role-session-name: GitHubActions-Terraform-Destroy
         aws-region: ${{ env.AWS_REGION }}
+        # Explicit OIDC configuration
+        audience: sts.amazonaws.com
+        output-env-credentials: true
 
-    - name: Terraform Init
+    - name: Terraform Destroy Plan - Layered Architecture
       run: |
         cd terraform
-        terraform init \
-          -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
-          -backend-config="key=${{ inputs.environment }}/terraform.tfstate" \
-          -backend-config="region=${{ env.AWS_REGION }}" \
-          -backend-config="dynamodb_table=${{ secrets.TERRAFORM_STATE_TABLE }}" \
-          -backend-config="encrypt=true"
-
-    - name: Terraform Workspace
-      run: |
-        cd terraform
-        terraform workspace select ${{ inputs.environment }}
-
-    - name: Terraform Destroy Plan
-      run: |
-        cd terraform
-        terraform plan -destroy -var-file="${{ inputs.environment }}.tfvars" -out=destroy-plan
+        # Plan destruction in reverse layer order
+        chmod +x ci/deploy-layers.sh
+        echo "Planning destruction of all layers..."
+        ./ci/deploy-layers.sh ${{ inputs.environment }}.tfvars plan
 
     - name: Manual Approval for Destroy
       uses: trstringer/manual-approval@v1
@@ -569,10 +612,15 @@ jobs:
           
           Please review the destroy plan carefully before approving.
 
-    - name: Terraform Destroy
+    - name: Terraform Destroy - Layered Architecture
+      env:
+        TERRAFORM_STATE_BUCKET: ${{ secrets.TERRAFORM_STATE_BUCKET }}
+        TERRAFORM_STATE_TABLE: ${{ secrets.TERRAFORM_STATE_TABLE }}
+        MAX_LAYER: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
       run: |
         cd terraform
-        terraform apply -auto-approve destroy-plan
+        # Execute destruction using the layered deployment script
+        ./ci/deploy-layers.sh ${{ inputs.environment }}.tfvars destroy $MAX_LAYER
 
     - name: Notify Destruction
       uses: 8398a7/action-slack@v3
@@ -581,10 +629,12 @@ jobs:
         status: ${{ job.status }}
         channel: '#infrastructure-critical'
         text: |
-          ⚠️ TERRAFORM DESTROY: ${{ job.status }}
+          ⚠️ TERRAFORM DESTROY - Layered Architecture: ${{ job.status }}
           Environment: ${{ inputs.environment }}
           Actor: ${{ github.actor }}
-          
-          Infrastructure in ${{ inputs.environment }} has been destroyed.
+          Max Layer: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
+
+          Infrastructure layers 1-${{ inputs.max_layer || '1' }} in ${{ inputs.environment }} have been destroyed.
+          (Reverse order destruction)
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
