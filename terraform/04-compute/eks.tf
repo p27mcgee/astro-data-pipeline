@@ -5,17 +5,17 @@ resource "aws_eks_cluster" "main" {
   version  = var.eks_cluster_version
 
   vpc_config {
-    subnet_ids              = concat(aws_subnet.private[*].id, aws_subnet.public[*].id)
+    subnet_ids              = concat(data.terraform_remote_state.foundation.outputs.private_subnet_ids, data.terraform_remote_state.foundation.outputs.public_subnet_ids)
     endpoint_private_access = true
     endpoint_public_access  = true
     public_access_cidrs     = ["0.0.0.0/0"]
-    security_group_ids      = [aws_security_group.eks_cluster.id]
+    security_group_ids      = [data.terraform_remote_state.foundation.outputs.eks_cluster_security_group_id]
   }
 
   encryption_config {
     resources = ["secrets"]
     provider {
-      key_id = var.enable_kms_encryption ? aws_kms_key.eks[0].arn : null
+      key_arn = var.enable_kms_encryption ? aws_kms_key.eks[0].arn : null
     }
   }
 
@@ -27,9 +27,9 @@ resource "aws_eks_cluster" "main" {
     aws_cloudwatch_log_group.eks_cluster,
   ]
 
-  tags = {
+  tags = merge(var.additional_tags, {
     Name = "${var.project_name}-eks-cluster"
-  }
+  })
 }
 
 # EKS Cluster IAM Role
@@ -49,9 +49,9 @@ resource "aws_iam_role" "eks_cluster" {
     ]
   })
 
-  tags = {
+  tags = merge(var.additional_tags, {
     Name = "${var.project_name}-eks-cluster-role"
-  }
+  })
 }
 
 # EKS Cluster IAM Role Policy Attachments
@@ -72,7 +72,7 @@ resource "aws_eks_node_group" "main" {
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = "${var.project_name}-${each.key}"
   node_role_arn   = aws_iam_role.eks_nodes.arn
-  subnet_ids      = aws_subnet.private[*].id
+  subnet_ids      = data.terraform_remote_state.foundation.outputs.private_subnet_ids
 
   capacity_type  = each.value.capacity_type
   instance_types = each.value.instance_types
@@ -107,11 +107,11 @@ resource "aws_eks_node_group" "main" {
     aws_iam_role_policy_attachment.eks_container_registry_policy,
   ]
 
-  tags = {
+  tags = merge(var.additional_tags, {
     Name        = "${var.project_name}-${each.key}-node-group"
     Environment = var.environment
     NodeGroup   = each.key
-  }
+  })
 }
 
 # EKS Node Group IAM Role
@@ -131,9 +131,9 @@ resource "aws_iam_role" "eks_nodes" {
     ]
   })
 
-  tags = {
+  tags = merge(var.additional_tags, {
     Name = "${var.project_name}-eks-nodes-role"
-  }
+  })
 }
 
 # EKS Node Group IAM Role Policy Attachments
@@ -182,106 +182,15 @@ resource "aws_iam_role_policy_attachment" "eks_s3_access" {
   role       = aws_iam_role.eks_nodes.name
 }
 
-# EKS Add-ons
-resource "aws_eks_addon" "vpc_cni" {
-  cluster_name      = aws_eks_cluster.main.name
-  addon_name        = "vpc-cni"
-  addon_version     = data.aws_eks_addon_version.vpc_cni.version
-  resolve_conflicts = "OVERWRITE"
-}
-
-resource "aws_eks_addon" "coredns" {
-  cluster_name      = aws_eks_cluster.main.name
-  addon_name        = "coredns"
-  addon_version     = data.aws_eks_addon_version.coredns.version
-  resolve_conflicts = "OVERWRITE"
-
-  depends_on = [aws_eks_node_group.main]
-}
-
-resource "aws_eks_addon" "kube_proxy" {
-  cluster_name      = aws_eks_cluster.main.name
-  addon_name        = "kube-proxy"
-  addon_version     = data.aws_eks_addon_version.kube_proxy.version
-  resolve_conflicts = "OVERWRITE"
-}
-
-resource "aws_eks_addon" "aws_ebs_csi_driver" {
-  cluster_name      = aws_eks_cluster.main.name
-  addon_name        = "aws-ebs-csi-driver"
-  addon_version     = data.aws_eks_addon_version.aws_ebs_csi_driver.version
-  resolve_conflicts = "OVERWRITE"
-
-  service_account_role_arn = aws_iam_role.ebs_csi_driver.arn
-}
-
-# Data sources for EKS add-on versions
-data "aws_eks_addon_version" "vpc_cni" {
-  addon_name         = "vpc-cni"
-  kubernetes_version = aws_eks_cluster.main.version
-  most_recent        = true
-}
-
-data "aws_eks_addon_version" "coredns" {
-  addon_name         = "coredns"
-  kubernetes_version = aws_eks_cluster.main.version
-  most_recent        = true
-}
-
-data "aws_eks_addon_version" "kube_proxy" {
-  addon_name         = "kube-proxy"
-  kubernetes_version = aws_eks_cluster.main.version
-  most_recent        = true
-}
-
-data "aws_eks_addon_version" "aws_ebs_csi_driver" {
-  addon_name         = "aws-ebs-csi-driver"
-  kubernetes_version = aws_eks_cluster.main.version
-  most_recent        = true
-}
-
-# EBS CSI Driver IAM Role
-resource "aws_iam_role" "ebs_csi_driver" {
-  name = "${var.project_name}-ebs-csi-driver-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Federated = aws_iam_openid_connect_provider.eks.arn
-        }
-        Action = "sts:AssumeRoleWithWebIdentity"
-        Condition = {
-          StringEquals = {
-            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
-            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" = "sts.amazonaws.com"
-          }
-        }
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ebs_csi_driver" {
-  policy_arn = "arn:aws:iam::aws:policy/service-role/Amazon_EBS_CSI_DriverPolicy"
-  role       = aws_iam_role.ebs_csi_driver.name
-}
-
 # OIDC Provider for EKS
-data "tls_certificate" "eks" {
-  url = aws_eks_cluster.main.identity[0].oidc[0].issuer
-}
-
 resource "aws_iam_openid_connect_provider" "eks" {
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = [data.tls_certificate.eks.certificates[0].sha1_fingerprint]
   url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
 
-  tags = {
+  tags = merge(var.additional_tags, {
     Name = "${var.project_name}-eks-oidc"
-  }
+  })
 }
 
 # CloudWatch Log Group for EKS
@@ -289,9 +198,9 @@ resource "aws_cloudwatch_log_group" "eks_cluster" {
   name              = "/aws/eks/${var.project_name}-eks/cluster"
   retention_in_days = var.cloudwatch_log_retention_days
 
-  tags = {
+  tags = merge(var.additional_tags, {
     Name = "${var.project_name}-eks-cluster-logs"
-  }
+  })
 }
 
 # KMS Key for EKS encryption
@@ -302,9 +211,9 @@ resource "aws_kms_key" "eks" {
   deletion_window_in_days = 7
   enable_key_rotation     = true
 
-  tags = {
+  tags = merge(var.additional_tags, {
     Name = "${var.project_name}-eks-kms-key"
-  }
+  })
 }
 
 resource "aws_kms_alias" "eks" {

@@ -3,9 +3,7 @@
 *.tfstate.*
 .terraform/
 .terraform.lock.hcl
-*.tfvars
-!terraform/dev.tfvars.example
-!terraform/prod.tfvars.example
+tfplan
 
 # Java / Gradle
 .gradle/
@@ -16,7 +14,6 @@ target/
 *.nar
 *.class
 *.log
-*.tmp
 .settings/
 .project
 .classpath

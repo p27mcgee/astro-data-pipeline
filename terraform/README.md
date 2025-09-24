@@ -17,6 +17,8 @@ The infrastructure consists of:
 1. **AWS CLI**: Configure with appropriate permissions
 2. **Terraform**: Version >= 1.0
 3. **kubectl**: For EKS cluster management
+4. **TFLint**: For Terraform code linting and validation (recommended)
+5. **Checkov**: For security scanning and compliance checks (recommended)
 
 ```bash
 # Install Terraform
@@ -30,6 +32,14 @@ brew install awscli     # macOS
 # Install kubectl
 brew install kubectl    # macOS
 # or download from https://kubernetes.io/docs/tasks/tools/
+
+# Install TFLint (recommended for code quality)
+brew install tflint     # macOS
+# or download from https://github.com/terraform-linters/tflint
+
+# Install Checkov (recommended for security scanning)
+pip install checkov     # Python package
+# or brew install checkov  # macOS with Homebrew
 ```
 
 ## AWS Permissions Required
@@ -59,9 +69,9 @@ terraform init
 Copy the appropriate example file and customize:
 
 ```bash
-# For development
-cp dev.tfvars.example dev.tfvars
-# Edit dev.tfvars with your specific configuration
+# For staging
+cp staging.tfvars.example staging.tfvars
+# Edit staging.tfvars with your specific configuration
 
 # For production
 cp prod.tfvars.example prod.tfvars
@@ -71,8 +81,8 @@ cp prod.tfvars.example prod.tfvars
 ### 3. Plan the Deployment
 
 ```bash
-# Development environment
-terraform plan -var-file="dev.tfvars"
+# Staging environment
+terraform plan -var-file="staging.tfvars"
 
 # Production environment
 terraform plan -var-file="prod.tfvars"
@@ -81,8 +91,8 @@ terraform plan -var-file="prod.tfvars"
 ### 4. Deploy Infrastructure
 
 ```bash
-# Development environment
-terraform apply -var-file="dev.tfvars"
+# Staging environment
+terraform apply -var-file="staging.tfvars"
 
 # Production environment
 terraform apply -var-file="prod.tfvars"
@@ -109,7 +119,7 @@ terraform/
 ├── monitoring.tf       # CloudWatch monitoring and alerting
 ├── lambda/             # Lambda function code
 │   └── s3_trigger.py   # S3 event trigger function
-├── dev.tfvars.example  # Development environment variables
+├── staging.tfvars.example  # Staging environment variables
 ├── prod.tfvars.example # Production environment variables
 └── README.md          # This file
 ```
@@ -280,8 +290,44 @@ To destroy the infrastructure:
 
 ```bash
 # WARNING: This will delete all resources and data
-terraform destroy -var-file="dev.tfvars"  # or prod.tfvars
+terraform destroy -var-file="staging.tfvars"  # or prod.tfvars
 ```
+
+## Environment Comparison & Cost Analysis
+
+This project demonstrates different architectural approaches for staging vs production:
+
+### Staging Environment (~$202/month)
+
+**Optimized for cost and development efficiency:**
+
+- **Single-AZ deployment** - Saves ~$35/month on NAT Gateway costs
+- **Balanced instance sizes** - db.t3.small/t3.medium for performance vs cost balance
+- **Aggressive S3 lifecycle** - 30-day expiration to minimize storage costs
+- **Reduced monitoring** - 7-day log retention, Container Insights disabled
+- **AWS managed encryption** - No additional KMS key costs
+
+### Production Environment (~$1,200/month - DISABLED)
+
+**Optimized for high availability and reliability:**
+
+- **Multi-AZ deployment** - Full fault tolerance across 3 availability zones
+- **Production instance sizes** - m5.large, c5.2xlarge, r5.xlarge instances
+- **Long-term storage** - Multi-year retention with intelligent tiering
+- **Comprehensive monitoring** - 90-day retention, full observability stack
+- **Customer-managed encryption** - Enhanced security with KMS keys
+
+### Key Trade-offs Demonstrated
+
+| **Aspect**       | **Staging**             | **Production**     |
+|------------------|-------------------------|--------------------|
+| **Availability** | Single point of failure | 99.99% uptime      |
+| **Cost**         | $202/month              | $1,200/month       |
+| **Recovery**     | Manual intervention     | Automatic failover |
+| **Monitoring**   | Basic                   | Comprehensive      |
+| **Scaling**      | Manual                  | Automated          |
+
+This approach demonstrates enterprise-level understanding of cost optimization vs reliability trade-offs.
 
 ## Support
 
