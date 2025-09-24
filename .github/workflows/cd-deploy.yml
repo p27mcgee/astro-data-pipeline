@@ -1,12 +1,13 @@
 name: CD - Build & Deploy
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'application/**'
-      - 'kubernetes/**'
-      - '.github/workflows/**'
+  # FIXME
+  #  push:
+  #    branches: [ main ]
+  #    paths:
+  #      - 'application/**'
+  #      - 'kubernetes/**'
+  #      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -16,7 +17,8 @@ on:
         type: choice
         options:
           - staging
-          - production
+      # We only have staging
+      #          - production
       force_deploy:
         description: 'Force deployment even if no changes'
         required: false
@@ -25,6 +27,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
+  # FIXME
   ECR_REGISTRY: 123456789012.dkr.ecr.us-east-1.amazonaws.com
   EKS_CLUSTER_NAME: astro-data-pipeline-eks
   NAMESPACE: astro-pipeline
@@ -52,8 +55,8 @@ jobs:
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        # AWS Role Trusts GitHub OIDC identity provider
+        role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE }}
         aws-region: ${{ env.AWS_REGION }}
 
     - name: Login to Amazon ECR
@@ -192,8 +195,8 @@ jobs:
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        # AWS Role Trusts GitHub OIDC identity provider
+        role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE }}
         aws-region: ${{ env.AWS_REGION }}
 
     - name: Setup kubectl
@@ -247,80 +250,81 @@ jobs:
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-  deploy-production:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: [build-and-deploy, deploy-staging]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment: production
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-
-    - name: Setup kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'v1.28.0'
-
-    - name: Update kubeconfig
-      run: |
-        aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
-
-    - name: Create deployment backup
-      run: |
-        kubectl get deployment image-processor -n ${{ env.NAMESPACE }} -o yaml > image-processor-backup.yaml
-        kubectl get deployment catalog-service -n ${{ env.NAMESPACE }} -o yaml > catalog-service-backup.yaml
-
-    - name: Blue-Green Deployment
-      run: |
-        # Create green environment
-        kubectl patch deployment image-processor -n ${{ env.NAMESPACE }} \
-          -p '{"spec":{"template":{"spec":{"containers":[{"name":"image-processor","image":"${{ needs.build-and-deploy.outputs.image-processor-image }}"}]}}}}'
-        kubectl patch deployment catalog-service -n ${{ env.NAMESPACE }} \
-          -p '{"spec":{"template":{"spec":{"containers":[{"name":"catalog-service","image":"${{ needs.build-and-deploy.outputs.catalog-service-image }}"}]}}}}'
-
-    - name: Wait for production rollout
-      run: |
-        kubectl rollout status deployment/image-processor -n ${{ env.NAMESPACE }} --timeout=900s
-        kubectl rollout status deployment/catalog-service -n ${{ env.NAMESPACE }} --timeout=900s
-
-    - name: Production health checks
-      run: |
-        # Extensive health checks for production
-        kubectl wait --for=condition=ready pod -l app=image-processor -n ${{ env.NAMESPACE }} --timeout=300s
-        kubectl wait --for=condition=ready pod -l app=catalog-service -n ${{ env.NAMESPACE }} --timeout=300s
-
-        # Service health checks
-        for i in {1..5}; do
-          kubectl exec -n ${{ env.NAMESPACE }} deployment/image-processor -- \
-            curl -f http://localhost:8081/actuator/health/readiness && break
-          sleep 30
-        done
-
-        for i in {1..5}; do
-          kubectl exec -n ${{ env.NAMESPACE }} deployment/catalog-service -- \
-            curl -f http://localhost:8081/actuator/health/readiness && break
-          sleep 30
-        done
-
-    - name: Post production deployment notification
-      uses: 8398a7/action-slack@v3
-      if: always()
-      with:
-        status: ${{ job.status }}
-        channel: '#production-deployments'
-        text: |
-          🚀 Production deployment ${{ job.status }}
-          Image Processor: ${{ needs.build-and-deploy.outputs.image-processor-image }}
-          Catalog Service: ${{ needs.build-and-deploy.outputs.catalog-service-image }}
-          Deployment time: ${{ github.event.head_commit.timestamp }}
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+# No production
+#  deploy-production:
+#    name: Deploy to Production
+#    runs-on: ubuntu-latest
+#    needs: [build-and-deploy, deploy-staging]
+#    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+#    environment: production
+#
+#    steps:
+#    - name: Checkout code
+#      uses: actions/checkout@v4
+#
+#    - name: Configure AWS credentials
+#      uses: aws-actions/configure-aws-credentials@v4
+#      with:
+#        # AWS Role Trusts GitHub OIDC identity provider
+#        role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE }}
+#        aws-region: ${{ env.AWS_REGION }}
+#
+#    - name: Setup kubectl
+#      uses: azure/setup-kubectl@v3
+#      with:
+#        version: 'v1.28.0'
+#
+#    - name: Update kubeconfig
+#      run: |
+#        aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+#
+#    - name: Create deployment backup
+#      run: |
+#        kubectl get deployment image-processor -n ${{ env.NAMESPACE }} -o yaml > image-processor-backup.yaml
+#        kubectl get deployment catalog-service -n ${{ env.NAMESPACE }} -o yaml > catalog-service-backup.yaml
+#
+#    - name: Blue-Green Deployment
+#      run: |
+#        # Create green environment
+#        kubectl patch deployment image-processor -n ${{ env.NAMESPACE }} \
+#          -p '{"spec":{"template":{"spec":{"containers":[{"name":"image-processor","image":"${{ needs.build-and-deploy.outputs.image-processor-image }}"}]}}}}'
+#        kubectl patch deployment catalog-service -n ${{ env.NAMESPACE }} \
+#          -p '{"spec":{"template":{"spec":{"containers":[{"name":"catalog-service","image":"${{ needs.build-and-deploy.outputs.catalog-service-image }}"}]}}}}'
+#
+#    - name: Wait for production rollout
+#      run: |
+#        kubectl rollout status deployment/image-processor -n ${{ env.NAMESPACE }} --timeout=900s
+#        kubectl rollout status deployment/catalog-service -n ${{ env.NAMESPACE }} --timeout=900s
+#
+#    - name: Production health checks
+#      run: |
+#        # Extensive health checks for production
+#        kubectl wait --for=condition=ready pod -l app=image-processor -n ${{ env.NAMESPACE }} --timeout=300s
+#        kubectl wait --for=condition=ready pod -l app=catalog-service -n ${{ env.NAMESPACE }} --timeout=300s
+#
+#        # Service health checks
+#        for i in {1..5}; do
+#          kubectl exec -n ${{ env.NAMESPACE }} deployment/image-processor -- \
+#            curl -f http://localhost:8081/actuator/health/readiness && break
+#          sleep 30
+#        done
+#
+#        for i in {1..5}; do
+#          kubectl exec -n ${{ env.NAMESPACE }} deployment/catalog-service -- \
+#            curl -f http://localhost:8081/actuator/health/readiness && break
+#          sleep 30
+#        done
+#
+#    - name: Post production deployment notification
+#      uses: 8398a7/action-slack@v3
+#      if: always()
+#      with:
+#        status: ${{ job.status }}
+#        channel: '#production-deployments'
+#        text: |
+#          🚀 Production deployment ${{ job.status }}
+#          Image Processor: ${{ needs.build-and-deploy.outputs.image-processor-image }}
+#          Catalog Service: ${{ needs.build-and-deploy.outputs.catalog-service-image }}
+#          Deployment time: ${{ github.event.head_commit.timestamp }}
+#      env:
+#        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
