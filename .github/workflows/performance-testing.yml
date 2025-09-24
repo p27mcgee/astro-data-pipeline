@@ -1,17 +1,18 @@
 name: Performance Testing
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'application/**'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'application/**'
-  schedule:
-    # Run performance tests nightly at 3 AM UTC
-    - cron: '0 3 * * *'
+  # FIXME this needs AWS infra to run
+  #  push:
+  #    branches: [ main ]
+  #    paths:
+  #      - 'application/**'
+  #  pull_request:
+  #    branches: [ main ]
+  #    paths:
+  #      - 'application/**'
+  #  schedule:
+  #    # Run performance tests nightly at 3 AM UTC
+  #    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       test_type:
@@ -293,7 +294,7 @@ jobs:
         fi
 
     - name: Upload load test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: load-test-results
@@ -403,7 +404,7 @@ jobs:
         k6 run --out json=stress_test_results.json stress_test.js
 
     - name: Upload stress test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: stress-test-results
@@ -622,7 +623,7 @@ jobs:
         python db_performance.py || echo "Database performance test completed with warnings"
 
     - name: Upload database test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: database-performance-results
@@ -743,7 +744,7 @@ jobs:
         cat performance_analysis_report.md >> $GITHUB_STEP_SUMMARY
 
     - name: Upload performance analysis report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: performance-analysis-report
         path: performance_analysis_report.md

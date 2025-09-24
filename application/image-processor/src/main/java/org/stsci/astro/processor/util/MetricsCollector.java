@@ -37,6 +37,11 @@ public class MetricsCollector {
     private final AtomicLong activeJobsGauge = new AtomicLong(0);
     private final AtomicLong queueSizeGauge = new AtomicLong(0);
 
+    // FIXME: Temporary default constructor for testing - remove when test configuration is fixed
+    public MetricsCollector() {
+        this(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
+    }
+
     public MetricsCollector(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
         

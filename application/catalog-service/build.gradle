@@ -35,7 +35,7 @@ springBoot {
     mainClass = 'org.stsci.astro.catalog.CatalogServiceApplication'
 }
 
-task buildDocker(type: Exec) {
+tasks.register('buildDocker', Exec) {
     dependsOn build
     workingDir '.'
     commandLine 'docker', 'build', '-t', "astro-catalog-service:${version}", '.'

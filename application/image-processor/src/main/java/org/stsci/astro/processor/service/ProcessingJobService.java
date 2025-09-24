@@ -89,8 +89,8 @@ public class ProcessingJobService {
     public Page<JobStatusResponse> listJobs(String userId, ProcessingJob.ProcessingStatus status, 
                                            ProcessingJob.ProcessingType processingType,
                                            int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, 
-                Sort.by(Sort.Direction.DESC, "submittedAt"));
+        Pageable pageable = PageRequest.of(page, size,
+                Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<ProcessingJob> jobs;
         

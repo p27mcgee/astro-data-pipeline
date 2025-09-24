@@ -1,5 +1,6 @@
 package org.stsci.astro.catalog.integration;
 
+import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
 import org.junit.jupiter.api.Order;
@@ -9,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
@@ -20,7 +20,6 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-import jakarta.persistence.EntityManagerFactory;
 import javax.sql.DataSource;
 import java.sql.Connection;
 
@@ -28,7 +27,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 @SpringBootTest(classes = CatalogServiceApplication.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@ActiveProfiles("application-context-test")
+@TestPropertySource(properties = {
+    "spring.profiles.active=${SPRING_PROFILES_ACTIVE:application-context-test}"
+})
 @TestMethodOrder(OrderAnnotation.class)
 @Testcontainers
 @TestPropertySource(properties = {

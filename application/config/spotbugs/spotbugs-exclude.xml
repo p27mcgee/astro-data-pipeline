@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- Exclude generated code and DTOs -->
+    <Match>
+        <Class name="~.*\.dto\..*"/>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!-- Exclude Spring Boot auto-configuration classes -->
+    <Match>
+        <Class name="~.*Application"/>
+        <Bug pattern="UWF_UNWRITTEN_FIELD"/>
+    </Match>
+
+    <!-- Exclude configuration classes from certain checks -->
+    <Match>
+        <Class name="~.*Config"/>
+        <Bug pattern="UWF_UNWRITTEN_FIELD,URF_UNREAD_FIELD"/>
+    </Match>
+
+    <!-- Exclude JPA entities from field exposure warnings -->
+    <Match>
+        <Class name="~.*\.entity\..*"/>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2,UWF_UNWRITTEN_FIELD"/>
+    </Match>
+
+    <!-- Exclude test classes from certain performance checks -->
+    <Match>
+        <Class name="~.*Test"/>
+        <Bug pattern="DM_NUMBER_CTOR,DM_BOXED_PRIMITIVE_FOR_PARSING"/>
+    </Match>
+
+    <Match>
+        <Class name="~.*IT"/>
+        <Bug pattern="DM_NUMBER_CTOR,DM_BOXED_PRIMITIVE_FOR_PARSING"/>
+    </Match>
+
+    <!-- Exclude Lombok-generated code -->
+    <Match>
+        <Class name="~.*"/>
+        <Method name="~(equals|hashCode|toString|canEqual)"/>
+        <Bug pattern="EQ_UNUSUAL"/>
+    </Match>
+
+    <!-- Exclude astronomical constants and magic numbers in scientific calculations -->
+    <Match>
+        <Class name="~.*Constants"/>
+        <Bug pattern="MS_SHOULD_BE_FINAL"/>
+    </Match>
+
+    <Match>
+        <Class name="~.*AstronomicalUtils"/>
+        <Bug pattern="CNT_ROUGH_CONSTANT_VALUE"/>
+    </Match>
+
+    <Match>
+        <Class name="~.*AstronomicalCalculations"/>
+        <Bug pattern="CNT_ROUGH_CONSTANT_VALUE"/>
+    </Match>
+
+    <!-- Exclude common Spring Boot patterns -->
+    <Match>
+        <Class name="~.*Controller"/>
+        <Method name="~.*"/>
+        <Bug pattern="REC_CATCH_EXCEPTION"/>
+    </Match>
+
+    <!-- Exclude repository interfaces -->
+    <Match>
+        <Class name="~.*Repository"/>
+        <Bug pattern="NM_SAME_SIMPLE_NAME_AS_INTERFACE"/>
+    </Match>
+
+    <!-- Exclude builder pattern classes -->
+    <Match>
+        <Class name="~.*Builder"/>
+        <Bug pattern="UWF_UNWRITTEN_FIELD,URF_UNREAD_FIELD"/>
+    </Match>
+
+    <!-- Exclude serialization warnings for DTOs -->
+    <Match>
+        <Class name="~.*Response"/>
+        <Bug pattern="SE_NO_SERIALVERSIONID"/>
+    </Match>
+
+    <Match>
+        <Class name="~.*Request"/>
+        <Bug pattern="SE_NO_SERIALVERSIONID"/>
+    </Match>
+
+    <!-- Exclude null checks in validation methods -->
+    <Match>
+        <Method name="~.*validate.*"/>
+        <Bug pattern="RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE"/>
+    </Match>
+
+    <!-- Exclude astronomical processing false positives -->
+    <Match>
+        <Class name="~.*ProcessingService"/>
+        <Bug pattern="REC_CATCH_EXCEPTION"/>
+    </Match>
+
+    <!-- Exclude FITS file processing specific issues -->
+    <Match>
+        <Class name="~.*FitsProcessingService"/>
+        <Bug pattern="OS_OPEN_STREAM"/>
+    </Match>
+</FindBugsFilter>

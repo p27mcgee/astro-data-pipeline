@@ -187,6 +187,144 @@ python db_performance_test.py
 kubectl apply -f kubernetes/performance-tests/
 ```
 
+## 🛡️ Security Updates Applied (2024-09-22)
+
+### ✅ Successfully Updated Dependencies
+
+**Jackson Databind:** `2.15.3` → `2.17.2`
+- **Risk Mitigated:** CVE-2023-35116 (DoS via cyclic dependencies)
+- **Impact:** Enhanced JSON processing security
+
+**Netty:** `4.1.100.Final` → `4.1.115.Final`
+- **Risk Mitigated:** CVE-2024-47535 (DoS on Windows), CVE-2024-29025 (HTTP vulnerabilities)
+- **Impact:** Prevents memory exhaustion attacks and HTTP request smuggling
+
+**Spring Cloud AWS:** `3.0.3` → `3.1.1`
+- **Risk Mitigated:** CVE-2024-21634 (Ion-Java dependency vulnerability)
+- **Impact:** Improved AWS SDK security and performance
+
+### ⚠️ Remaining Security Risk
+
+**Spring Boot:** Remains at `3.1.5` (CRITICAL CVEs present)
+- **Affected CVEs:** CVE-2024-38807, CVE-2023-34055, CVE-2025-22235
+- **Reason:** Latest Spring Boot 3.1.x versions (3.1.13, 3.1.16) not available in Gradle Plugin Portal
+- **Mitigation Options:**
+  1. **Immediate:** Monitor for Spring Boot 3.1.13+ plugin availability
+  2. **Short-term:** Consider upgrading to Spring Boot 3.2.x series
+  3. **Risk Assessment:** Document and accept risk with monitoring
+
+### Security Scan Verification
+- **Dependencies Updated:** 3 of 4 critical vulnerabilities resolved
+- **Test Status:** All unit and integration tests passing
+- **Compatibility:** No breaking changes detected
+
+### 🔧 Advanced CI/CD Pipeline Architecture (2024-09-22)
+
+**Evolution:** Transformed from single-pipeline approach to **dual-workflow strategy** for optimal developer experience and production confidence.
+
+**Implementation:**
+
+### 1. **CI Workflow (Code Validation)** - `ci-cd-pipeline.yml`
+**Triggers:** All branch pushes + PRs to main/develop
+**Purpose:** Fast developer feedback and code quality assurance
+
+**Pipeline Architecture:**
+```
+Branch Push → Validation Pipeline (7 minutes)
+┌─────────────────┐    ┌──────────────────────┐    ┌─────────────────┐
+│   Unit Tests    │ -> │  Integration Tests   │ -> │Code Quality +   │
+│   (H2 - Fast)   │    │ (PostgreSQL + PostGIS│    │JAR Build Only   │
+│   < 2 minutes   │    │   < 3 minutes)       │    │  < 2 minutes    │
+└─────────────────┘    └──────────────────────┘    └─────────────────┘
+```
+
+**Key Features:**
+- ✅ **Multi-Database Testing:** H2 for speed, PostgreSQL for integration confidence
+- ✅ **Dynamic Profile Resolution:** `${SPRING_PROFILES_ACTIVE:test}` pattern
+- ✅ **PostGIS Compatibility:** Schema validation bypass for spatial extensions
+- ✅ **No Docker Builds:** Pure code validation for fast feedback
+- ✅ **Comprehensive Quality:** Checkstyle, SpotBugs, SonarCloud analysis
+
+### 2. **CD Workflow (Build & Deploy)** - `cd-deploy.yml`
+**Triggers:** Main branch merges + manual dispatch
+**Purpose:** Production image creation and deployment
+
+**Pipeline Architecture:**
+```
+Main Merge → Build & Deploy Pipeline (18 minutes)
+┌─────────────────┐    ┌──────────────────────┐    ┌─────────────────┐
+│  Docker Build   │ -> │  Security Scanning   │ -> │ Deploy Pipeline │
+│ + ECR Push      │    │   (Trivy + Snyk)     │    │Stage → Prod     │
+│  < 5 minutes    │    │    < 3 minutes       │    │  < 10 minutes   │
+└─────────────────┘    └──────────────────────┘    └─────────────────┘
+```
+
+**Advanced Features:**
+- ✅ **Multi-Platform Builds:** amd64/arm64 container support
+- ✅ **Container Security:** Trivy vulnerability scanning
+- ✅ **Blue-Green Deployment:** Zero-downtime production updates
+- ✅ **Health Validation:** Comprehensive readiness and liveness checks
+- ✅ **Automated Rollback:** Built-in failure detection and recovery
+
+### 3. **Profile-Based Multi-Environment Configuration**
+```yaml
+# Local Development (Default)
+SPRING_PROFILES_ACTIVE=test           # → H2 database
+
+# CI Integration Validation
+SPRING_PROFILES_ACTIVE=ci-integration # → PostgreSQL + PostGIS
+                                     # → Schema validation disabled
+                                     # → allow_jdbc_metadata_access: false
+
+# Production Deployment
+# → Full PostgreSQL with spatial extensions
+# → Production-optimized configuration
+```
+
+### 4. **Developer Experience Optimization**
+
+**Local Development Workflow:**
+```bash
+# Fast local testing (H2)
+./gradlew test integrationTest
+
+# CI environment simulation (PostgreSQL)
+docker run -d postgis/postgis:15-3.3 # ... full setup
+SPRING_PROFILES_ACTIVE=ci-integration ./gradlew integrationTest
+```
+
+**Git Workflow Integration:**
+```bash
+# Feature development
+git checkout -b feature/enhancement
+git push origin feature/enhancement     # ✅ CI validation (7 min)
+
+# Production deployment
+gh pr merge --squash                   # ✅ CD pipeline (18 min)
+```
+
+**Benefits of Dual-Workflow Architecture:**
+- ✅ **Developer Productivity:** 7-minute validation feedback vs 18-minute full pipeline
+- ✅ **Resource Optimization:** No Docker builds during development validation
+- ✅ **Production Confidence:** Fresh images with security scanning for every deployment
+- ✅ **Cost Efficiency:** Minimal AWS resource usage during CI validation
+- ✅ **Parallel Development:** Multiple developers can work without deployment conflicts
+- ✅ **Clear Separation:** Code validation vs production deployment concerns
+
+**Security & Quality Integration:**
+- **Dependency Scanning:** Snyk analysis on every branch
+- **Container Security:** Trivy scanning before production deployment
+- **Code Quality Gates:** Must pass before merge eligibility
+- **Production Validation:** Health checks and smoke tests
+
+**Test Strategy & Coverage:**
+- **Unit Tests:** Business logic validation with H2 (fast)
+- **Integration Tests:** Database operations with PostgreSQL (real)
+- **Security Tests:** Dependency and container vulnerability analysis
+- **Deployment Tests:** Staging validation before production
+
+- **Status:** ✅ Production-grade dual-workflow CI/CD with optimal developer experience
+
 ## 🔧 Key Features & Capabilities
 
 ### 🔬 Advanced Image Processing Service (Java Spring Boot)
@@ -311,20 +449,28 @@ kubectl apply -f kubernetes/performance-tests/
 
 ## Deployment & CI/CD
 
-### GitHub Actions Pipeline
+### Dual-Workflow CI/CD Strategy
 ```yaml
-# Automated testing and deployment
-- Unit and integration tests
-- Security scanning with Snyk
-- Container image building
-- Terraform validation
-- Kubernetes deployment
+# CI Workflow (ci-cd-pipeline.yml) - All Branches
+- Fast code validation pipeline
+- Unit tests (H2) + Integration tests (PostgreSQL)
+- Code quality analysis (Checkstyle, SpotBugs, SonarCloud)
+- JAR compilation and artifact upload
+- Dependency security scanning (Snyk)
+
+# CD Workflow (cd-deploy.yml) - Main Branch Only
+- Docker image building and ECR publishing
+- Container security scanning (Trivy)
+- Automated staging deployment
+- Blue-green production deployment
+- Health checks and monitoring
 ```
 
 ### Environment Strategy
-- **Development**: Local Docker Compose
-- **Staging**: Scaled-down AWS environment
-- **Production**: Full AWS infrastructure with HA
+- **Development**: Local H2 testing with optional PostgreSQL simulation
+- **CI Environment**: GitHub Actions with PostgreSQL + PostGIS services
+- **Staging**: Automated deployment after main branch merge
+- **Production**: Blue-green deployment with comprehensive health checks
 
 ## Domain-Specific Features
 

@@ -57,6 +57,7 @@ tasks.register('contextVerificationTest', Test) {
     systemProperty 'spring.test.context.cache.maxSize', '1'
 }
 
+
 // Performance Tests
 tasks.register('performanceTest', Test) {
     useJUnitPlatform()

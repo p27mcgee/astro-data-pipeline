@@ -412,7 +412,6 @@ public class FitsProcessingService {
         java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
         try (java.io.DataOutputStream dos = new java.io.DataOutputStream(outputStream)) {
             // Suppress deprecation warning for nom-tam-fits library - no alternative available
-            @SuppressWarnings("deprecation")
             var fits = outputFits;
             fits.write(dos);
         }

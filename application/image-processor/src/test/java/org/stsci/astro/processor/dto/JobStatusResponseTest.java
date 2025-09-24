@@ -18,42 +18,48 @@ class JobStatusResponseTest {
 
     @BeforeEach
     void setUp() {
-        now = LocalDateTime.now();
-        
-        Map<String, String> metadata = new HashMap<>();
-        metadata.put("instrument", "HST");
-        metadata.put("filter", "F814W");
+        try {
+            now = LocalDateTime.now();
 
-        sampleJob = ProcessingJob.builder()
-                .id(1L)
-                .jobId("job_123456789")
-                .status(ProcessingJob.ProcessingStatus.COMPLETED)
-                .processingType(ProcessingJob.ProcessingType.FULL_CALIBRATION)
-                .priority(5)
-                .inputBucket("input-bucket")
-                .inputObjectKey("input-file.fits")
-                .outputBucket("output-bucket")
-                .outputObjectKey("output-file.fits")
-                .createdAt(now.minusHours(2))
-                .updatedAt(now.minusMinutes(30))
-                .startedAt(now.minusHours(1))
-                .completedAt(now.minusMinutes(30))
-                .processingDurationMs(1800000L) // 30 minutes
-                .errorMessage(null)
-                .stackTrace(null)
-                .retryCount(0)
-                .maxRetries(3)
-                .inputFileSizeBytes(1048576L) // 1 MB
-                .outputFileSizeBytes(1024000L) // ~1 MB
-                .completedSteps(Arrays.asList(
-                    ProcessingJob.ProcessingStep.DOWNLOAD_INPUT,
-                    ProcessingJob.ProcessingStep.VALIDATE_FITS,
-                    ProcessingJob.ProcessingStep.DARK_SUBTRACTION,
-                    ProcessingJob.ProcessingStep.FLAT_CORRECTION,
-                    ProcessingJob.ProcessingStep.UPLOAD_OUTPUT
-                ))
-                .metadata(metadata)
-                .build();
+            Map<String, String> metadata = new HashMap<>();
+            metadata.put("instrument", "HST");
+            metadata.put("filter", "F814W");
+
+            sampleJob = ProcessingJob.builder()
+                    .id(1L)
+                    .jobId("job_123456789")
+                    .status(ProcessingJob.ProcessingStatus.COMPLETED)
+                    .processingType(ProcessingJob.ProcessingType.FULL_CALIBRATION)
+                    .priority(5)
+                    .inputBucket("input-bucket")
+                    .inputObjectKey("input-file.fits")
+                    .outputBucket("output-bucket")
+                    .outputObjectKey("output-file.fits")
+                    .createdAt(now.minusHours(2))
+                    .updatedAt(now.minusMinutes(30))
+                    .startedAt(now.minusHours(1))
+                    .completedAt(now.minusMinutes(30))
+                    .processingDurationMs(1800000L) // 30 minutes
+                    .errorMessage(null)
+                    .stackTrace(null)
+                    .retryCount(0)
+                    .maxRetries(3)
+                    .inputFileSizeBytes(1048576L) // 1 MB
+                    .outputFileSizeBytes(1024000L) // ~1 MB
+                    .completedSteps(Arrays.asList(
+                        ProcessingJob.ProcessingStep.DOWNLOAD_INPUT,
+                        ProcessingJob.ProcessingStep.VALIDATE_FITS,
+                        ProcessingJob.ProcessingStep.DARK_SUBTRACTION,
+                        ProcessingJob.ProcessingStep.FLAT_CORRECTION,
+                        ProcessingJob.ProcessingStep.UPLOAD_OUTPUT
+                    ))
+                    .metadata(metadata)
+                    .build();
+        } catch (Exception e) {
+            System.err.println("Exception in setUp: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Failed to set up test", e);
+        }
     }
 
     @Test

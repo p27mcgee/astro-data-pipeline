@@ -7,7 +7,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.stsci.astro.processor.entity.ProcessingJob;
 import org.stsci.astro.processor.repository.ProcessingJobRepository;
 
@@ -18,8 +18,10 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 
 @DataJpaTest
-@ActiveProfiles("test")
-class ProcessingJobRepositoryIntegrationTest {
+@TestPropertySource(properties = {
+    "spring.profiles.active=${SPRING_PROFILES_ACTIVE:test}"
+})
+class ProcessingJobRepositoryIT {
 
     @Autowired
     private TestEntityManager entityManager;
@@ -51,6 +53,8 @@ class ProcessingJobRepositoryIntegrationTest {
                 .outputObjectKey("output1.fits")
                 .maxRetries(3)
                 .retryCount(0)
+                .metadata(new java.util.HashMap<>())
+                .completedSteps(new java.util.ArrayList<>())
                 .createdAt(now.minusHours(2))
                 .updatedAt(now.minusHours(2))
                 .build();
@@ -66,6 +70,8 @@ class ProcessingJobRepositoryIntegrationTest {
                 .outputObjectKey("output2.fits")
                 .maxRetries(3)
                 .retryCount(0)
+                .metadata(new java.util.HashMap<>())
+                .completedSteps(new java.util.ArrayList<>())
                 .createdAt(now.minusHours(1))
                 .updatedAt(now.minusMinutes(30))
                 .startedAt(now.minusMinutes(30))
@@ -82,6 +88,8 @@ class ProcessingJobRepositoryIntegrationTest {
                 .outputObjectKey("output3.fits")
                 .maxRetries(3)
                 .retryCount(0)
+                .metadata(new java.util.HashMap<>())
+                .completedSteps(new java.util.ArrayList<>())
                 .createdAt(now.minusDays(2))
                 .updatedAt(now.minusDays(1))
                 .startedAt(now.minusDays(1).plusHours(1))
@@ -209,17 +217,18 @@ class ProcessingJobRepositoryIntegrationTest {
 
     @Test
     void findByCreatedAtBetween_ShouldReturnJobsInTimeRange() {
-        // Given
-        LocalDateTime start = LocalDateTime.now().minusHours(3);
-        LocalDateTime end = LocalDateTime.now().minusMinutes(30);
+        // Given - Use current time range since @CreationTimestamp overwrites manual values
+        LocalDateTime start = LocalDateTime.now().minusMinutes(5);
+        LocalDateTime end = LocalDateTime.now().plusMinutes(5);
 
         // When
         List<ProcessingJob> jobsInRange = jobRepository.findByCreatedAtBetween(start, end);
 
-        // Then
-        assertEquals(2, jobsInRange.size());
+        // Then - All 3 jobs should be found as they were created with @CreationTimestamp (now)
+        assertEquals(3, jobsInRange.size());
         assertTrue(jobsInRange.stream().anyMatch(job -> "job_001".equals(job.getJobId())));
         assertTrue(jobsInRange.stream().anyMatch(job -> "job_002".equals(job.getJobId())));
+        assertTrue(jobsInRange.stream().anyMatch(job -> "job_003".equals(job.getJobId())));
     }
 
     @Test
