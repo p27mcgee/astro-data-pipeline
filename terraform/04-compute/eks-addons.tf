@@ -1,4 +1,4 @@
-# EKS Add-ons
+# VPC CNI addon for Kubernetes pod networking within VPC
 resource "aws_eks_addon" "vpc_cni" {
   cluster_name                = aws_eks_cluster.main.name
   addon_name                  = "vpc-cni"
@@ -6,6 +6,7 @@ resource "aws_eks_addon" "vpc_cni" {
   resolve_conflicts_on_create = "OVERWRITE"
 }
 
+# CoreDNS addon for Kubernetes cluster DNS resolution
 resource "aws_eks_addon" "coredns" {
   cluster_name                = aws_eks_cluster.main.name
   addon_name                  = "coredns"
@@ -15,6 +16,7 @@ resource "aws_eks_addon" "coredns" {
   depends_on = [aws_eks_node_group.main]
 }
 
+# Kube-proxy addon for Kubernetes service networking and load balancing
 resource "aws_eks_addon" "kube_proxy" {
   cluster_name                = aws_eks_cluster.main.name
   addon_name                  = "kube-proxy"
@@ -22,6 +24,7 @@ resource "aws_eks_addon" "kube_proxy" {
   resolve_conflicts_on_create = "OVERWRITE"
 }
 
+# EBS CSI driver for persistent volume storage in Kubernetes
 resource "aws_eks_addon" "aws_ebs_csi_driver" {
   cluster_name                = aws_eks_cluster.main.name
   addon_name                  = "aws-ebs-csi-driver"
@@ -31,32 +34,35 @@ resource "aws_eks_addon" "aws_ebs_csi_driver" {
   service_account_role_arn = aws_iam_role.ebs_csi_driver.arn
 }
 
-# Data sources for EKS add-on versions
+# Get latest compatible VPC CNI addon version for the EKS cluster
 data "aws_eks_addon_version" "vpc_cni" {
   addon_name         = "vpc-cni"
   kubernetes_version = aws_eks_cluster.main.version
   most_recent        = true
 }
 
+# Get latest compatible CoreDNS addon version for the EKS cluster
 data "aws_eks_addon_version" "coredns" {
   addon_name         = "coredns"
   kubernetes_version = aws_eks_cluster.main.version
   most_recent        = true
 }
 
+# Get latest compatible kube-proxy addon version for the EKS cluster
 data "aws_eks_addon_version" "kube_proxy" {
   addon_name         = "kube-proxy"
   kubernetes_version = aws_eks_cluster.main.version
   most_recent        = true
 }
 
+# Get latest compatible EBS CSI driver addon version for the EKS cluster
 data "aws_eks_addon_version" "aws_ebs_csi_driver" {
   addon_name         = "aws-ebs-csi-driver"
   kubernetes_version = aws_eks_cluster.main.version
   most_recent        = true
 }
 
-# EBS CSI Driver IAM Role
+# IAM role for EBS CSI driver using OIDC authentication
 resource "aws_iam_role" "ebs_csi_driver" {
   name = "${var.project_name}-ebs-csi-driver-role"
 
@@ -80,6 +86,7 @@ resource "aws_iam_role" "ebs_csi_driver" {
   })
 }
 
+# Attach AWS managed policy for EBS volume operations
 resource "aws_iam_role_policy_attachment" "ebs_csi_driver" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/Amazon_EBS_CSI_DriverPolicy"
   role       = aws_iam_role.ebs_csi_driver.name

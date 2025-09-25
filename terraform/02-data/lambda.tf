@@ -1,4 +1,4 @@
-# Lambda function for S3 event processing
+# Package Lambda function code for S3 event-driven processing
 data "archive_file" "s3_trigger_lambda" {
   type        = "zip"
   output_path = "/tmp/s3_trigger_lambda.zip"
@@ -12,7 +12,7 @@ data "archive_file" "s3_trigger_lambda" {
   }
 }
 
-# IAM role for Lambda function
+# IAM execution role for Lambda with AWS service trust policy
 resource "aws_iam_role" "s3_trigger_lambda" {
   name = "${var.project_name}-s3-trigger-lambda-role"
 
@@ -34,13 +34,13 @@ resource "aws_iam_role" "s3_trigger_lambda" {
   })
 }
 
-# Lambda basic execution policy
+# Attach AWS managed policy for CloudWatch logging
 resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
   role       = aws_iam_role.s3_trigger_lambda.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Custom policy for S3 access
+# Custom IAM policy allowing S3 access to project buckets only
 resource "aws_iam_policy" "lambda_s3_policy" {
   name        = "${var.project_name}-lambda-s3-policy"
   description = "IAM policy for Lambda to access S3 buckets"
@@ -64,12 +64,13 @@ resource "aws_iam_policy" "lambda_s3_policy" {
   })
 }
 
+# Attach custom S3 policy to Lambda execution role
 resource "aws_iam_role_policy_attachment" "lambda_s3_policy" {
   role       = aws_iam_role.s3_trigger_lambda.name
   policy_arn = aws_iam_policy.lambda_s3_policy.arn
 }
 
-# Lambda function
+# Lambda function to trigger Airflow DAGs when FITS files arrive
 resource "aws_lambda_function" "s3_trigger" {
   filename         = data.archive_file.s3_trigger_lambda.output_path
   function_name    = "${var.project_name}-s3-trigger"
@@ -92,7 +93,7 @@ resource "aws_lambda_function" "s3_trigger" {
   })
 }
 
-# Permission for S3 to invoke Lambda
+# Grant S3 service permission to invoke the Lambda function
 resource "aws_lambda_permission" "s3_invoke" {
   statement_id  = "AllowS3Invoke"
   action        = "lambda:InvokeFunction"

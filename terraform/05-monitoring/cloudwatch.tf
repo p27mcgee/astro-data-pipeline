@@ -1,13 +1,14 @@
-# SNS Topic for Alarms
+# SNS topic for sending infrastructure alerts via email
 resource "aws_sns_topic" "alerts" {
-  name = "${var.project_name}-alerts"
+  name              = "${var.project_name}-alerts"
+  kms_master_key_id = aws_kms_key.sns.arn
 
   tags = merge(var.additional_tags, {
     Name = "${var.project_name}-alerts"
   })
 }
 
-# SNS Topic Subscription
+# Email subscriptions for receiving CloudWatch alarm notifications
 resource "aws_sns_topic_subscription" "email_alerts" {
   count = length(var.alarm_notification_emails)
 
@@ -16,7 +17,7 @@ resource "aws_sns_topic_subscription" "email_alerts" {
   endpoint  = var.alarm_notification_emails[count.index]
 }
 
-# CloudWatch Dashboard
+# Unified CloudWatch dashboard for monitoring astronomical data pipeline
 resource "aws_cloudwatch_dashboard" "main" {
   dashboard_name = "${var.project_name}-${var.environment}"
 
@@ -101,9 +102,7 @@ resource "aws_cloudwatch_dashboard" "main" {
   })
 }
 
-# CloudWatch Alarms
-
-# EKS Node Count Alarm
+# Alert when EKS cluster has no available worker nodes
 resource "aws_cloudwatch_metric_alarm" "eks_node_count" {
   alarm_name          = "${var.project_name}-eks-no-nodes"
   comparison_operator = "LessThanThreshold"
@@ -126,7 +125,7 @@ resource "aws_cloudwatch_metric_alarm" "eks_node_count" {
   })
 }
 
-# RDS CPU Utilization Alarm
+# Alert when database CPU usage exceeds 80% for performance monitoring
 resource "aws_cloudwatch_metric_alarm" "rds_cpu" {
   alarm_name          = "${var.project_name}-rds-cpu-high"
   comparison_operator = "GreaterThanThreshold"
@@ -149,7 +148,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_cpu" {
   })
 }
 
-# RDS Connection Count Alarm
+# Alert when database connection count exceeds safe threshold
 resource "aws_cloudwatch_metric_alarm" "rds_connections" {
   alarm_name          = "${var.project_name}-rds-connections-high"
   comparison_operator = "GreaterThanThreshold"
@@ -172,7 +171,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_connections" {
   })
 }
 
-# Lambda Error Rate Alarm
+# Alert when S3 trigger Lambda function experiences errors
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   alarm_name          = "${var.project_name}-lambda-errors"
   comparison_operator = "GreaterThanThreshold"
@@ -195,7 +194,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   })
 }
 
-# S3 Monitoring (CloudWatch alarms for S3 monitoring)
+# Monitor S3 client errors across all data lake buckets
 resource "aws_cloudwatch_metric_alarm" "s3_4xx_errors" {
   for_each = data.terraform_remote_state.data.outputs.s3_bucket_names
 
@@ -219,7 +218,7 @@ resource "aws_cloudwatch_metric_alarm" "s3_4xx_errors" {
   })
 }
 
-# Container Insights for EKS (optional)
+# Enhanced container and application monitoring for EKS workloads
 resource "aws_eks_addon" "container_insights" {
   count = var.enable_container_insights ? 1 : 0
 
@@ -229,6 +228,7 @@ resource "aws_eks_addon" "container_insights" {
   resolve_conflicts_on_create = "OVERWRITE"
 }
 
+# Get latest compatible Container Insights addon version
 data "aws_eks_addon_version" "container_insights" {
   count = var.enable_container_insights ? 1 : 0
 
@@ -236,3 +236,54 @@ data "aws_eks_addon_version" "container_insights" {
   kubernetes_version = data.terraform_remote_state.compute.outputs.eks_cluster_version
   most_recent        = true
 }
+
+# Customer-managed KMS key for SNS topic encryption
+resource "aws_kms_key" "sns" {
+  description             = "KMS key for SNS topic encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  # KMS key policy allowing SNS service to use the key
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow SNS service"
+        Effect = "Allow"
+        Principal = {
+          Service = "sns.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = merge(var.additional_tags, {
+    Name = "${var.project_name}-sns-kms-key"
+  })
+}
+
+# Human-readable alias for the SNS encryption KMS key
+resource "aws_kms_alias" "sns" {
+  name          = "alias/${var.project_name}-sns"
+  target_key_id = aws_kms_key.sns.key_id
+}
+
+# Data source to get current AWS account ID
+data "aws_caller_identity" "current" {}

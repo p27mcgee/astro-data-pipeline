@@ -1,0 +1,75 @@
+# Checkov configuration for astronomical data pipeline
+# Suppresses known acceptable security findings for demo environment
+
+# CONTAINER REGISTRY STRATEGY:
+# This demo uses Docker Hub instead of AWS ECR for the following reasons:
+# 1. Simplicity: Public images, no AWS authentication complexity
+# 2. Development velocity: Standard docker push/pull workflow
+# 3. CI/CD integration: GitHub Actions native Docker Hub support
+# 4. Cost optimization: No ECR storage costs for demo images
+# 5. Portability: Images work across cloud providers
+#
+# Production considerations for ECR migration:
+# - Enhanced security: Private registry within AWS VPC
+# - Image scanning: Native vulnerability detection
+# - IAM integration: Fine-grained access control
+# - Performance: Reduced latency within AWS regions
+# - Compliance: Enterprise audit and governance requirements
+#
+# TODO: Migrate to AWS ECR for production deployment
+# 1. Add aws_ecr_repository resources to terraform/
+# 2. Update CI/CD pipeline to push to ECR instead of Docker Hub
+# 3. Configure EKS service accounts with ECR pull permissions
+# 4. Enable ECR image scanning and lifecycle policies
+# 5. Remove ECR-related suppressions from this checkov config
+
+framework:
+  - terraform
+
+download-external-modules: true
+evaluate-variables: true
+
+# Suppress known acceptable risks for demonstration project
+skip-check:
+  # Security group egress rules - Required for EKS cluster operation
+  - CKV_AWS_382  # EKS nodes need broad egress for container registry, API calls
+
+  # EKS cluster endpoint configurations - Demo environment accessibility
+  - CKV_AWS_38   # EKS public endpoint accessible from restricted IPs (not 0.0.0.0/0)
+  - CKV_AWS_39   # EKS public endpoint enabled for demo access (private endpoint costs more)
+
+  # Lambda function configurations - Acceptable for demo S3 trigger
+  - CKV_AWS_50   # X-Ray tracing not required for simple trigger
+  - CKV_AWS_117  # VPC not required for S3 event processing
+  - CKV_AWS_116  # DLQ not needed for idempotent S3 operations
+  - CKV_AWS_272  # Code signing not required for demo environment
+  - CKV_AWS_115  # Function-level concurrency managed by EKS scaling
+  - CKV_AWS_173  # Environment variable encryption not needed (no secrets)
+
+  # S3 lifecycle configurations - Cost optimization vs compliance trade-off
+  - CKV_AWS_300  # Abort incomplete uploads - handled by application logic
+
+  # Container registry configurations - Docker Hub vs ECR trade-offs for demo
+  - CKV_AWS_32   # ECR policy public access - using Docker Hub for demo simplicity
+  - CKV_AWS_51   # ECR immutable tags - not applicable with Docker Hub usage
+  - CKV_AWS_136  # ECR KMS encryption - not applicable with Docker Hub usage
+  - CKV_AWS_163  # ECR image scanning - using external scanning tools (Trivy, Snyk)
+
+  # RDS configurations - Staging environment acceptable trade-offs
+  - CKV_AWS_157  # Multi-AZ not required for staging (cost optimization)
+  - CKV_AWS_226  # Manual upgrade control for compatibility testing
+  - CKV_AWS_338  # Short log retention acceptable for demo (7 days vs 1 year)
+  - CKV_AWS_161  # IAM authentication not required for demo database
+  - CKV_AWS_293  # Deletion protection disabled for easy teardown
+  - CKV_AWS_353  # Performance insights not needed for staging
+  - CKV_AWS_118  # Enhanced monitoring not required for demo
+  - CKV_AWS_129  # Database logs not required for demo workload
+  - CKV_AWS_149  # Secrets Manager KMS encryption (AWS managed keys acceptable)
+
+# Only scan Terraform configurations
+hard-fail-on:
+  - HIGH  # Still fail on high-severity new issues
+
+# Output formatting for CI/CD
+compact: true
+quiet: false

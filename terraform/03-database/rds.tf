@@ -1,4 +1,4 @@
-# DB Subnet Group
+# Database subnet group using isolated database subnets from foundation layer
 resource "aws_db_subnet_group" "main" {
   name       = "${var.project_name}-db-subnet-group"
   subnet_ids = data.terraform_remote_state.foundation.outputs.database_subnet_ids
@@ -8,7 +8,7 @@ resource "aws_db_subnet_group" "main" {
   })
 }
 
-# DB Parameter Group
+# PostgreSQL parameter group optimized for astronomical data processing
 resource "aws_db_parameter_group" "postgres" {
   family = "postgres15"
   name   = "${var.project_name}-postgres-params"
@@ -44,13 +44,13 @@ resource "aws_db_parameter_group" "postgres" {
   })
 }
 
-# Random password for RDS master user
+# Generate secure random password for database master user
 resource "random_password" "rds_password" {
   length  = 16
   special = true
 }
 
-# Main RDS Instance
+# PostgreSQL RDS instance for astronomical catalog and metadata storage
 resource "aws_db_instance" "main" {
   identifier = "${var.project_name}-postgres"
 
@@ -104,17 +104,18 @@ resource "aws_db_instance" "main" {
   ]
 }
 
-# CloudWatch Log Group for RDS
+# CloudWatch log group for PostgreSQL database logs with KMS encryption
 resource "aws_cloudwatch_log_group" "rds" {
   name              = "/aws/rds/instance/${var.project_name}-postgres/postgresql"
   retention_in_days = 7
+  kms_key_id        = var.enable_kms_encryption ? aws_kms_key.cloudwatch_logs[0].arn : null
 
   tags = merge(var.additional_tags, {
     Name = "${var.project_name}-rds-logs"
   })
 }
 
-# IAM role for RDS enhanced monitoring
+# IAM role allowing RDS service to publish enhanced monitoring metrics
 resource "aws_iam_role" "rds_enhanced_monitoring" {
   count = var.rds_monitoring_interval > 0 ? 1 : 0
 
@@ -138,6 +139,7 @@ resource "aws_iam_role" "rds_enhanced_monitoring" {
   })
 }
 
+# Attach AWS managed policy for RDS enhanced monitoring permissions
 resource "aws_iam_role_policy_attachment" "rds_enhanced_monitoring" {
   count = var.rds_monitoring_interval > 0 ? 1 : 0
 
@@ -145,7 +147,7 @@ resource "aws_iam_role_policy_attachment" "rds_enhanced_monitoring" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
 
-# Secrets Manager secret for RDS credentials
+# Secrets Manager secret for secure database credential storage
 resource "aws_secretsmanager_secret" "rds_credentials" {
   count = var.enable_secrets_manager ? 1 : 0
 
@@ -157,6 +159,7 @@ resource "aws_secretsmanager_secret" "rds_credentials" {
   })
 }
 
+# Store database connection details in Secrets Manager for application access
 resource "aws_secretsmanager_secret_version" "rds_credentials" {
   count = var.enable_secrets_manager ? 1 : 0
 
@@ -169,3 +172,64 @@ resource "aws_secretsmanager_secret_version" "rds_credentials" {
     dbname   = aws_db_instance.main.db_name
   })
 }
+
+# Customer-managed KMS key for CloudWatch logs encryption
+resource "aws_kms_key" "cloudwatch_logs" {
+  count = var.enable_kms_encryption ? 1 : 0
+
+  description             = "KMS key for CloudWatch logs encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  # KMS key policy allowing CloudWatch Logs service
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow CloudWatch Logs service"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          ArnEquals = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/rds/instance/${var.project_name}-postgres/postgresql"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = merge(var.additional_tags, {
+    Name = "${var.project_name}-cloudwatch-logs-kms-key"
+  })
+}
+
+# Human-readable alias for the CloudWatch logs encryption KMS key
+resource "aws_kms_alias" "cloudwatch_logs" {
+  count = var.enable_kms_encryption ? 1 : 0
+
+  name          = "alias/${var.project_name}-cloudwatch-logs"
+  target_key_id = aws_kms_key.cloudwatch_logs[0].key_id
+}
+
+# Data sources for KMS key policy
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}

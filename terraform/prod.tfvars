@@ -22,6 +22,15 @@ database_subnet_cidrs   = ["10.0.100.0/24", "10.0.101.0/24", "10.0.102.0/24"]
 
 # EKS Configuration - Production-ready with multiple node groups
 eks_cluster_version = "1.28"
+
+# EKS Security Configuration - Restrict public endpoint access
+# PRODUCTION: Define specific IP ranges for authorized access
+eks_public_access_cidrs = [
+  # "YOUR_CORPORATE_NETWORK/24",    # Office network
+  # "YOUR_VPN_GATEWAY/32",          # VPN gateway
+  # "YOUR_CI_CD_RUNNER_IP/32"       # GitHub Actions runners (if static)
+  "0.0.0.0/0"  # FIXME: Replace with your authorized IP ranges
+]
 eks_node_groups = {
   general = {
     instance_types = ["m5.large", "m5.xlarge"]

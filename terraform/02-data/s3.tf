@@ -1,4 +1,4 @@
-# S3 Buckets for Data Lake Architecture
+# Data lake S3 buckets for astronomical data processing pipeline
 resource "aws_s3_bucket" "data_buckets" {
   for_each = var.s3_buckets
 
@@ -11,7 +11,7 @@ resource "aws_s3_bucket" "data_buckets" {
   })
 }
 
-# S3 Bucket Versioning
+# Enable versioning on data buckets for data recovery and audit trails
 resource "aws_s3_bucket_versioning" "data_buckets" {
   for_each = var.s3_buckets
 
@@ -21,7 +21,7 @@ resource "aws_s3_bucket_versioning" "data_buckets" {
   }
 }
 
-# S3 Bucket Server-Side Encryption
+# Encrypt all astronomical data at rest using KMS or AES256
 resource "aws_s3_bucket_server_side_encryption_configuration" "data_buckets" {
   for_each = var.s3_buckets
 
@@ -36,7 +36,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "data_buckets" {
   }
 }
 
-# S3 Bucket Public Access Block
+# Block all public access to protect sensitive astronomical data
 resource "aws_s3_bucket_public_access_block" "data_buckets" {
   for_each = var.s3_buckets
 
@@ -48,7 +48,7 @@ resource "aws_s3_bucket_public_access_block" "data_buckets" {
   restrict_public_buckets = true
 }
 
-# S3 Bucket Lifecycle Configuration
+# Automated lifecycle management for cost optimization and data archival
 resource "aws_s3_bucket_lifecycle_configuration" "data_buckets" {
   for_each = var.s3_buckets
 
@@ -79,7 +79,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "data_buckets" {
   }
 }
 
-# S3 Bucket Notification for Lambda triggers
+# Trigger data processing pipeline when FITS files are uploaded
 resource "aws_s3_bucket_notification" "data_processing_trigger" {
   bucket = aws_s3_bucket.data_buckets["raw-data"].id
 
@@ -93,12 +93,12 @@ resource "aws_s3_bucket_notification" "data_processing_trigger" {
   depends_on = [aws_lambda_permission.s3_invoke]
 }
 
-# Random ID for unique bucket naming
+# Generate unique suffix to prevent bucket naming conflicts
 resource "random_id" "bucket_suffix" {
   byte_length = 8
 }
 
-# KMS Key for S3 encryption (optional)
+# Customer-managed KMS key for enhanced data encryption control
 resource "aws_kms_key" "s3" {
   count = var.enable_kms_encryption ? 1 : 0
 
@@ -111,6 +111,7 @@ resource "aws_kms_key" "s3" {
   })
 }
 
+# Human-readable alias for the S3 encryption KMS key
 resource "aws_kms_alias" "s3" {
   count = var.enable_kms_encryption ? 1 : 0
 

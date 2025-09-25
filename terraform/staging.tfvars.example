@@ -22,6 +22,16 @@ database_subnet_cidrs   = ["10.0.100.0/24", "10.0.101.0/24"] # RDS requires mini
 
 # EKS Configuration - Staging setup
 eks_cluster_version = "1.28"
+
+# EKS Security Configuration - Restrict public endpoint access
+# IMPORTANT: Replace with your actual public IP address or network CIDR
+# To get your current IP: curl https://api.ipify.org
+eks_public_access_cidrs = [
+  "YOUR_PUBLIC_IP/32"  # Replace with your current public IP
+  # Add additional IPs/CIDRs as needed:
+  # "YOUR_OFFICE_IP/24",
+  # "YOUR_HOME_IP/32"
+]
 eks_node_groups = {
   general = {
     instance_types = ["t3.medium"]

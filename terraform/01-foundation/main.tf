@@ -1,4 +1,4 @@
-# Data source for availability zones
+# Get available AZs that don't require opt-in for multi-AZ deployment
 data "aws_availability_zones" "available" {
   state = "available"
 
@@ -8,7 +8,7 @@ data "aws_availability_zones" "available" {
   }
 }
 
-# VPC Configuration
+# Main VPC with DNS support for EKS cluster communication
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
@@ -20,7 +20,7 @@ resource "aws_vpc" "main" {
   })
 }
 
-# Internet Gateway
+# Internet gateway for public subnet internet access
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
@@ -29,14 +29,14 @@ resource "aws_internet_gateway" "main" {
   })
 }
 
-# Public Subnets
+# Public subnets for load balancers and NAT gateways
 resource "aws_subnet" "public" {
   count = length(var.public_subnet_cidrs)
 
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.public_subnet_cidrs[count.index]
   availability_zone       = data.aws_availability_zones.available.names[count.index]
-  map_public_ip_on_launch = false  # Security best practice - explicitly assign public IPs when needed
+  map_public_ip_on_launch = false # Security best practice - explicitly assign public IPs when needed
 
   tags = merge(var.additional_tags, {
     Name                                            = "${var.project_name}-public-subnet-${count.index + 1}"
@@ -46,7 +46,7 @@ resource "aws_subnet" "public" {
   })
 }
 
-# Private Subnets
+# Private subnets for EKS nodes and application workloads
 resource "aws_subnet" "private" {
   count = length(var.private_subnet_cidrs)
 
@@ -62,7 +62,7 @@ resource "aws_subnet" "private" {
   })
 }
 
-# Database Subnets
+# Isolated database subnets for RDS instances
 resource "aws_subnet" "database" {
   count = length(var.database_subnet_cidrs)
 
@@ -76,7 +76,7 @@ resource "aws_subnet" "database" {
   })
 }
 
-# Elastic IP for NAT Gateway
+# Static IP addresses for NAT gateways to ensure consistent outbound IPs
 resource "aws_eip" "nat" {
   count = length(var.public_subnet_cidrs)
 
@@ -88,7 +88,7 @@ resource "aws_eip" "nat" {
   })
 }
 
-# NAT Gateways
+# NAT gateways to provide internet access for private subnets
 resource "aws_nat_gateway" "main" {
   count = length(var.public_subnet_cidrs)
 
@@ -102,7 +102,7 @@ resource "aws_nat_gateway" "main" {
   })
 }
 
-# Route Tables
+# Public route table directing traffic to internet gateway
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -116,6 +116,7 @@ resource "aws_route_table" "public" {
   })
 }
 
+# Private route tables directing traffic through NAT gateways
 resource "aws_route_table" "private" {
   count = length(var.private_subnet_cidrs)
 
@@ -131,6 +132,7 @@ resource "aws_route_table" "private" {
   })
 }
 
+# Database route table with no internet access for security
 resource "aws_route_table" "database" {
   vpc_id = aws_vpc.main.id
 
@@ -139,7 +141,7 @@ resource "aws_route_table" "database" {
   })
 }
 
-# Route Table Associations
+# Associate public subnets with public route table
 resource "aws_route_table_association" "public" {
   count = length(var.public_subnet_cidrs)
 
@@ -147,6 +149,7 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
+# Associate private subnets with their respective NAT gateway route tables
 resource "aws_route_table_association" "private" {
   count = length(var.private_subnet_cidrs)
 
@@ -154,6 +157,7 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private[count.index].id
 }
 
+# Associate database subnets with isolated route table
 resource "aws_route_table_association" "database" {
   count = length(var.database_subnet_cidrs)
 
@@ -161,7 +165,7 @@ resource "aws_route_table_association" "database" {
   route_table_id = aws_route_table.database.id
 }
 
-# VPC Endpoints for S3
+# VPC endpoint for S3 access without internet gateway
 resource "aws_vpc_endpoint" "s3" {
   vpc_id       = aws_vpc.main.id
   service_name = "com.amazonaws.${var.aws_region}.s3"
@@ -171,7 +175,7 @@ resource "aws_vpc_endpoint" "s3" {
   })
 }
 
-# VPC Endpoint Route Table Associations
+# Enable S3 VPC endpoint access from private subnets
 resource "aws_vpc_endpoint_route_table_association" "s3_private" {
   count = length(aws_route_table.private)
 

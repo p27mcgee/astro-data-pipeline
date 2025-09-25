@@ -4,6 +4,8 @@
 .terraform/
 .terraform.lock.hcl
 tfplan
+# terrform command output
+terraform/*/*.out
 
 # Java / Gradle
 .gradle/

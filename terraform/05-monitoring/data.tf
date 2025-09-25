@@ -1,5 +1,4 @@
-# Data sources to import previous layer outputs
-
+# Import data layer outputs for S3 and Lambda monitoring
 data "terraform_remote_state" "data" {
   backend = "local"
   config = {
@@ -7,6 +6,7 @@ data "terraform_remote_state" "data" {
   }
 }
 
+# Import database layer outputs for RDS monitoring
 data "terraform_remote_state" "database" {
   backend = "local"
   config = {
@@ -14,6 +14,7 @@ data "terraform_remote_state" "database" {
   }
 }
 
+# Import compute layer outputs for EKS monitoring
 data "terraform_remote_state" "compute" {
   backend = "local"
   config = {
