@@ -7,13 +7,6 @@ on:
       - 'application/**'
       - 'kubernetes/**'
       - '.github/workflows/**'
-  workflow_dispatch:
-    inputs:
-      skip_tests:
-        description: 'Skip test execution'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read

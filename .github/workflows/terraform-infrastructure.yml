@@ -1,17 +1,11 @@
 name: Terraform Infrastructure
 
 on:
-  # FIXME
-  #  push:
-  #    branches: [ main, develop ]
-  #    paths:
-  #      - 'terraform/**'
-  #      - '.github/workflows/terraform-infrastructure.yml'
-  #  pull_request:
-  #    branches: [ main, develop ]
-  #    paths:
-  #      - 'terraform/**'
-  #      - '.github/workflows/terraform-infrastructure.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-infrastructure.yml'
   workflow_dispatch:
     inputs:
       action:
@@ -36,13 +30,13 @@ on:
       max_layer:
         description: 'Maximum layer to process (1-5)'
         required: true
-        default: '1'
+        default: '3'
         type: choice
         options:
           - '1'
           - '2'
+          - '3'
           # TODO
-          # - '3'
           # - '4'
           # - '5'
 
@@ -51,7 +45,7 @@ env:
   AWS_REGION: us-east-1
   TF_IN_AUTOMATION: true
   TF_INPUT: false
-  DEFAULT_MAX_LAYER: '1'  # Default for non-dispatch runs
+  DEFAULT_MAX_LAYER: '3'  # Default for non-dispatch runs
 
 permissions:
   id-token: write
