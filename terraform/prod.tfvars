@@ -205,12 +205,4 @@ enable_scheduled_scaling = true
 
 # Additional Tags
 additional_tags = {
-  Environment   = "production"
-  Purpose       = "astronomical-data-processing"
-  CostCenter    = "space-telescope-operations"
-  Owner         = "stsci-team"
-  Compliance    = "required"
-  BackupPolicy  = "daily"
-  DrPolicy      = "enabled"
-  Monitoring    = "24x7"
 }

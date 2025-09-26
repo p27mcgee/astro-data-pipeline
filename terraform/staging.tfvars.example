@@ -146,8 +146,4 @@ enable_scheduled_scaling = false
 
 # Additional Tags
 additional_tags = {
-  Environment = "staging"
-  Purpose     = "astronomical-data-processing"
-  CostCenter  = "research-and-development"
-  Owner       = "stsci-demo"
 }

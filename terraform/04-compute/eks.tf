@@ -1,6 +1,6 @@
 # Kubernetes cluster for running astronomical data processing workloads
 resource "aws_eks_cluster" "main" {
-  name     = "${var.project_name}-eks"
+  name     = "${var.project_name}-${var.environment}-eks"
   role_arn = aws_iam_role.eks_cluster.arn
   version  = var.eks_cluster_version
 
@@ -28,13 +28,13 @@ resource "aws_eks_cluster" "main" {
   ]
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-eks-cluster"
+    Name = "${var.project_name}-${var.environment}-eks-cluster"
   })
 }
 
 # IAM service role allowing EKS to manage cluster resources
 resource "aws_iam_role" "eks_cluster" {
-  name = "${var.project_name}-eks-cluster-role"
+  name = "${var.project_name}-${var.environment}-eks-cluster-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -50,7 +50,7 @@ resource "aws_iam_role" "eks_cluster" {
   })
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-eks-cluster-role"
+    Name = "${var.project_name}-${var.environment}-eks-cluster-role"
   })
 }
 
@@ -71,7 +71,7 @@ resource "aws_eks_node_group" "main" {
   for_each = var.eks_node_groups
 
   cluster_name    = aws_eks_cluster.main.name
-  node_group_name = "${var.project_name}-${each.key}"
+  node_group_name = "${var.project_name}-${var.environment}-${each.key}"
   node_role_arn   = aws_iam_role.eks_nodes.arn
   subnet_ids      = data.terraform_remote_state.foundation.outputs.private_subnet_ids
 
@@ -109,7 +109,7 @@ resource "aws_eks_node_group" "main" {
   ]
 
   tags = merge(var.additional_tags, {
-    Name        = "${var.project_name}-${each.key}-node-group"
+    Name        = "${var.project_name}-${var.environment}-${each.key}-node-group"
     Environment = var.environment
     NodeGroup   = each.key
   })
@@ -117,7 +117,7 @@ resource "aws_eks_node_group" "main" {
 
 # IAM role for EKS worker nodes to join cluster and access AWS services
 resource "aws_iam_role" "eks_nodes" {
-  name = "${var.project_name}-eks-nodes-role"
+  name = "${var.project_name}-${var.environment}-eks-nodes-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -133,7 +133,7 @@ resource "aws_iam_role" "eks_nodes" {
   })
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-eks-nodes-role"
+    Name = "${var.project_name}-${var.environment}-eks-nodes-role"
   })
 }
 
@@ -157,7 +157,7 @@ resource "aws_iam_role_policy_attachment" "eks_container_registry_policy" {
 
 # Custom IAM policy granting EKS nodes access to data lake S3 buckets
 resource "aws_iam_policy" "eks_s3_access" {
-  name        = "${var.project_name}-eks-s3-access"
+  name        = "${var.project_name}-${var.environment}-eks-s3-access"
   description = "IAM policy for EKS nodes to access S3 buckets"
 
   policy = jsonencode({
@@ -172,8 +172,8 @@ resource "aws_iam_policy" "eks_s3_access" {
           "s3:ListBucket"
         ]
         Resource = [
-          "arn:aws:s3:::${var.project_name}-*",
-          "arn:aws:s3:::${var.project_name}-*/*"
+          "arn:aws:s3:::${var.project_name}-${var.environment}-*",
+          "arn:aws:s3:::${var.project_name}-${var.environment}-*/*"
         ]
       }
     ]
@@ -193,18 +193,18 @@ resource "aws_iam_openid_connect_provider" "eks" {
   url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-eks-oidc"
+    Name = "${var.project_name}-${var.environment}-eks-oidc"
   })
 }
 
 # CloudWatch log group for EKS control plane logs with KMS encryption
 resource "aws_cloudwatch_log_group" "eks_cluster" {
-  name              = "/aws/eks/${var.project_name}-eks/cluster"
+  name              = "/aws/eks/${var.project_name}-${var.environment}-eks/cluster"
   retention_in_days = var.cloudwatch_log_retention_days
   kms_key_id        = var.enable_kms_encryption ? aws_kms_key.eks[0].arn : null
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-eks-cluster-logs"
+    Name = "${var.project_name}-${var.environment}-eks-cluster-logs"
   })
 }
 
@@ -245,7 +245,7 @@ resource "aws_kms_key" "eks" {
         Resource = "*"
         Condition = {
           ArnEquals = {
-            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/eks/${var.project_name}-eks/cluster"
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/eks/${var.project_name}-${var.environment}-eks/cluster"
           }
         }
       }
@@ -253,7 +253,7 @@ resource "aws_kms_key" "eks" {
   })
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-eks-kms-key"
+    Name = "${var.project_name}-${var.environment}-eks-kms-key"
   })
 }
 
@@ -261,7 +261,7 @@ resource "aws_kms_key" "eks" {
 resource "aws_kms_alias" "eks" {
   count = var.enable_kms_encryption ? 1 : 0
 
-  name          = "alias/${var.project_name}-eks"
+  name          = "alias/${var.project_name}-${var.environment}-eks"
   target_key_id = aws_kms_key.eks[0].key_id
 }
 

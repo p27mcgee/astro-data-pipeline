@@ -2,10 +2,10 @@
 resource "aws_s3_bucket" "data_buckets" {
   for_each = var.s3_buckets
 
-  bucket = "${var.project_name}-${each.key}-${var.environment}"
+  bucket = "${var.project_name}-${var.environment}-${each.key}-${var.environment}"
 
   tags = merge(var.additional_tags, {
-    Name        = "${var.project_name}-${each.key}"
+    Name        = "${var.project_name}-${var.environment}-${each.key}"
     Environment = var.environment
     Purpose     = each.key
   })
@@ -107,7 +107,7 @@ resource "aws_kms_key" "s3" {
   enable_key_rotation     = true
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-s3-kms-key"
+    Name = "${var.project_name}-${var.environment}-s3-kms-key"
   })
 }
 
@@ -115,6 +115,6 @@ resource "aws_kms_key" "s3" {
 resource "aws_kms_alias" "s3" {
   count = var.enable_kms_encryption ? 1 : 0
 
-  name          = "alias/${var.project_name}-s3"
+  name          = "alias/${var.project_name}-${var.environment}-s3"
   target_key_id = aws_kms_key.s3[0].key_id
 }

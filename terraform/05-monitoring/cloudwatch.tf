@@ -1,10 +1,10 @@
 # SNS topic for sending infrastructure alerts via email
 resource "aws_sns_topic" "alerts" {
-  name              = "${var.project_name}-alerts"
+  name              = "${var.project_name}-${var.environment}-alerts"
   kms_master_key_id = aws_kms_key.sns.arn
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-alerts"
+    Name = "${var.project_name}-${var.environment}-alerts"
   })
 }
 
@@ -19,7 +19,7 @@ resource "aws_sns_topic_subscription" "email_alerts" {
 
 # Unified CloudWatch dashboard for monitoring astronomical data pipeline
 resource "aws_cloudwatch_dashboard" "main" {
-  dashboard_name = "${var.project_name}-${var.environment}"
+  dashboard_name = "${var.project_name}-${var.environment}-${var.environment}"
 
   dashboard_body = jsonencode({
     widgets = [
@@ -104,7 +104,7 @@ resource "aws_cloudwatch_dashboard" "main" {
 
 # Alert when EKS cluster has no available worker nodes
 resource "aws_cloudwatch_metric_alarm" "eks_node_count" {
-  alarm_name          = "${var.project_name}-eks-no-nodes"
+  alarm_name          = "${var.project_name}-${var.environment}-eks-no-nodes"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "cluster_node_count"
@@ -121,13 +121,13 @@ resource "aws_cloudwatch_metric_alarm" "eks_node_count" {
   }
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-eks-node-count-alarm"
+    Name = "${var.project_name}-${var.environment}-eks-node-count-alarm"
   })
 }
 
 # Alert when database CPU usage exceeds 80% for performance monitoring
 resource "aws_cloudwatch_metric_alarm" "rds_cpu" {
-  alarm_name          = "${var.project_name}-rds-cpu-high"
+  alarm_name          = "${var.project_name}-${var.environment}-rds-cpu-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "CPUUtilization"
@@ -144,13 +144,13 @@ resource "aws_cloudwatch_metric_alarm" "rds_cpu" {
   }
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-rds-cpu-alarm"
+    Name = "${var.project_name}-${var.environment}-rds-cpu-alarm"
   })
 }
 
 # Alert when database connection count exceeds safe threshold
 resource "aws_cloudwatch_metric_alarm" "rds_connections" {
-  alarm_name          = "${var.project_name}-rds-connections-high"
+  alarm_name          = "${var.project_name}-${var.environment}-rds-connections-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "DatabaseConnections"
@@ -167,13 +167,13 @@ resource "aws_cloudwatch_metric_alarm" "rds_connections" {
   }
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-rds-connections-alarm"
+    Name = "${var.project_name}-${var.environment}-rds-connections-alarm"
   })
 }
 
 # Alert when S3 trigger Lambda function experiences errors
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
-  alarm_name          = "${var.project_name}-lambda-errors"
+  alarm_name          = "${var.project_name}-${var.environment}-lambda-errors"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "Errors"
@@ -190,7 +190,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
   }
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-lambda-errors-alarm"
+    Name = "${var.project_name}-${var.environment}-lambda-errors-alarm"
   })
 }
 
@@ -198,7 +198,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
 resource "aws_cloudwatch_metric_alarm" "s3_4xx_errors" {
   for_each = data.terraform_remote_state.data.outputs.s3_bucket_names
 
-  alarm_name          = "${var.project_name}-s3-${each.key}-4xx-errors"
+  alarm_name          = "${var.project_name}-${var.environment}-s3-${each.key}-4xx-errors"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "4xxErrors"
@@ -214,7 +214,7 @@ resource "aws_cloudwatch_metric_alarm" "s3_4xx_errors" {
   }
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-s3-${each.key}-4xx-errors"
+    Name = "${var.project_name}-${var.environment}-s3-${each.key}-4xx-errors"
   })
 }
 
@@ -275,13 +275,13 @@ resource "aws_kms_key" "sns" {
   })
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-sns-kms-key"
+    Name = "${var.project_name}-${var.environment}-sns-kms-key"
   })
 }
 
 # Human-readable alias for the SNS encryption KMS key
 resource "aws_kms_alias" "sns" {
-  name          = "alias/${var.project_name}-sns"
+  name          = "alias/${var.project_name}-${var.environment}-sns"
   target_key_id = aws_kms_key.sns.key_id
 }
 

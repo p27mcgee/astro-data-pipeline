@@ -3,7 +3,7 @@
 
 # Control plane security group for EKS cluster API server
 resource "aws_security_group" "eks_cluster" {
-  name_prefix = "${var.project_name}-eks-cluster-"
+  name_prefix = "${var.project_name}-${var.environment}-eks-cluster-"
   description = "Security group for EKS cluster control plane communication"
   vpc_id      = aws_vpc.main.id
 
@@ -20,13 +20,13 @@ resource "aws_security_group" "eks_cluster" {
   }
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-eks-cluster-sg"
+    Name = "${var.project_name}-${var.environment}-eks-cluster-sg"
   })
 }
 
 # Worker node security group for EKS pods and inter-node communication
 resource "aws_security_group" "eks_nodes" {
-  name_prefix = "${var.project_name}-eks-nodes-"
+  name_prefix = "${var.project_name}-${var.environment}-eks-nodes-"
   description = "Security group for EKS worker nodes and pod-to-pod communication"
   vpc_id      = aws_vpc.main.id
 
@@ -52,13 +52,13 @@ resource "aws_security_group" "eks_nodes" {
   }
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-eks-nodes-sg"
+    Name = "${var.project_name}-${var.environment}-eks-nodes-sg"
   })
 }
 
 # Database security group allowing access only from EKS nodes
 resource "aws_security_group" "rds" {
-  name_prefix = "${var.project_name}-rds-"
+  name_prefix = "${var.project_name}-${var.environment}-rds-"
   description = "Security group for PostgreSQL RDS database access from EKS nodes"
   vpc_id      = aws_vpc.main.id
 
@@ -82,6 +82,6 @@ resource "aws_security_group" "rds" {
   }
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-rds-sg"
+    Name = "${var.project_name}-${var.environment}-rds-sg"
   })
 }

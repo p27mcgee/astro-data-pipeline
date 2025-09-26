@@ -15,8 +15,8 @@ resource "aws_vpc" "main" {
   enable_dns_support   = true
 
   tags = merge(var.additional_tags, {
-    Name                                            = "${var.project_name}-vpc"
-    "kubernetes.io/cluster/${var.project_name}-eks" = "shared"
+    Name                                            = "${var.project_name}-${var.environment}-vpc"
+    "kubernetes.io/cluster/${var.project_name}-${var.environment}-eks" = "shared"
   })
 }
 
@@ -25,7 +25,7 @@ resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-igw"
+    Name = "${var.project_name}-${var.environment}-igw"
   })
 }
 
@@ -39,9 +39,9 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = false # Security best practice - explicitly assign public IPs when needed
 
   tags = merge(var.additional_tags, {
-    Name                                            = "${var.project_name}-public-subnet-${count.index + 1}"
+    Name                                            = "${var.project_name}-${var.environment}-public-subnet-${count.index + 1}"
     Type                                            = "public"
-    "kubernetes.io/cluster/${var.project_name}-eks" = "shared"
+    "kubernetes.io/cluster/${var.project_name}-${var.environment}-eks" = "shared"
     "kubernetes.io/role/elb"                        = "1"
   })
 }
@@ -55,9 +55,9 @@ resource "aws_subnet" "private" {
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = merge(var.additional_tags, {
-    Name                                            = "${var.project_name}-private-subnet-${count.index + 1}"
+    Name                                            = "${var.project_name}-${var.environment}-private-subnet-${count.index + 1}"
     Type                                            = "private"
-    "kubernetes.io/cluster/${var.project_name}-eks" = "owned"
+    "kubernetes.io/cluster/${var.project_name}-${var.environment}-eks" = "owned"
     "kubernetes.io/role/internal-elb"               = "1"
   })
 }
@@ -71,7 +71,7 @@ resource "aws_subnet" "database" {
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-db-subnet-${count.index + 1}"
+    Name = "${var.project_name}-${var.environment}-db-subnet-${count.index + 1}"
     Type = "database"
   })
 }
@@ -84,7 +84,7 @@ resource "aws_eip" "nat" {
   depends_on = [aws_internet_gateway.main]
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-nat-eip-${count.index + 1}"
+    Name = "${var.project_name}-${var.environment}-nat-eip-${count.index + 1}"
   })
 }
 
@@ -98,7 +98,7 @@ resource "aws_nat_gateway" "main" {
   depends_on = [aws_internet_gateway.main]
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-nat-gateway-${count.index + 1}"
+    Name = "${var.project_name}-${var.environment}-nat-gateway-${count.index + 1}"
   })
 }
 
@@ -112,7 +112,7 @@ resource "aws_route_table" "public" {
   }
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-public-rt"
+    Name = "${var.project_name}-${var.environment}-public-rt"
   })
 }
 
@@ -128,7 +128,7 @@ resource "aws_route_table" "private" {
   }
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-private-rt-${count.index + 1}"
+    Name = "${var.project_name}-${var.environment}-private-rt-${count.index + 1}"
   })
 }
 
@@ -137,7 +137,7 @@ resource "aws_route_table" "database" {
   vpc_id = aws_vpc.main.id
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-database-rt"
+    Name = "${var.project_name}-${var.environment}-database-rt"
   })
 }
 
@@ -171,7 +171,7 @@ resource "aws_vpc_endpoint" "s3" {
   service_name = "com.amazonaws.${var.aws_region}.s3"
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-s3-endpoint"
+    Name = "${var.project_name}-${var.environment}-s3-endpoint"
   })
 }
 

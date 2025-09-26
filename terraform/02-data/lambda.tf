@@ -14,7 +14,7 @@ data "archive_file" "s3_trigger_lambda" {
 
 # IAM execution role for Lambda with AWS service trust policy
 resource "aws_iam_role" "s3_trigger_lambda" {
-  name = "${var.project_name}-s3-trigger-lambda-role"
+  name = "${var.project_name}-${var.environment}-s3-trigger-lambda-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -30,7 +30,7 @@ resource "aws_iam_role" "s3_trigger_lambda" {
   })
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-s3-trigger-lambda-role"
+    Name = "${var.project_name}-${var.environment}-s3-trigger-lambda-role"
   })
 }
 
@@ -42,7 +42,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
 
 # Custom IAM policy allowing S3 access to project buckets only
 resource "aws_iam_policy" "lambda_s3_policy" {
-  name        = "${var.project_name}-lambda-s3-policy"
+  name        = "${var.project_name}-${var.environment}-lambda-s3-policy"
   description = "IAM policy for Lambda to access S3 buckets"
 
   policy = jsonencode({
@@ -56,8 +56,8 @@ resource "aws_iam_policy" "lambda_s3_policy" {
           "s3:ListBucket"
         ]
         Resource = [
-          "arn:aws:s3:::${var.project_name}-*",
-          "arn:aws:s3:::${var.project_name}-*/*"
+          "arn:aws:s3:::${var.project_name}-${var.environment}-*",
+          "arn:aws:s3:::${var.project_name}-${var.environment}-*/*"
         ]
       }
     ]
@@ -73,7 +73,7 @@ resource "aws_iam_role_policy_attachment" "lambda_s3_policy" {
 # Lambda function to trigger Airflow DAGs when FITS files arrive
 resource "aws_lambda_function" "s3_trigger" {
   filename      = data.archive_file.s3_trigger_lambda.output_path
-  function_name = "${var.project_name}-s3-trigger"
+  function_name = "${var.project_name}-${var.environment}-s3-trigger"
   role          = aws_iam_role.s3_trigger_lambda.arn
   handler       = "index.lambda_handler"
   runtime       = "python3.9"
@@ -89,7 +89,7 @@ resource "aws_lambda_function" "s3_trigger" {
   }
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-s3-trigger"
+    Name = "${var.project_name}-${var.environment}-s3-trigger"
   })
 }
 
