@@ -207,6 +207,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      pull-requests: write  # Required for PR comments
 
     outputs:
       tfplanExitCode: ${{ steps.tf-plan.outputs.exitcode }}
@@ -277,10 +278,7 @@ jobs:
         PLAN: "terraform\n${{ steps.tf-plan.outputs.stdout }}"
       with:
         script: |
-          const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
-          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
-          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
-          #### Terraform Plan 📖\`${{ steps.tf-plan.outcome }}\`
+          const output = `#### Terraform Plan (Staging) 📖\`${{ steps.tf-plan.outcome }}\`
           
           <details><summary>Show Plan (Staging)</summary>
           
