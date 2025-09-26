@@ -176,6 +176,8 @@ jobs:
       with:
         directory: terraform
         framework: terraform
+        # TODO maybe no path prefix?
+        config_file: ../.checkov.yml
         output_format: sarif
         output_file_path: checkov-results.sarif
         download_external_modules: true
