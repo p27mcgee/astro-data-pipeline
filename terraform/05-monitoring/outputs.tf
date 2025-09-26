@@ -55,12 +55,12 @@ output "container_insights_enabled" {
 output "monitoring_summary" {
   description = "Summary of monitoring setup"
   value = {
-    environment               = var.environment
-    dashboard_name           = aws_cloudwatch_dashboard.main.dashboard_name
-    alerts_topic            = aws_sns_topic.alerts.name
-    log_retention_days      = var.cloudwatch_log_retention_days
-    container_insights      = var.enable_container_insights
-    total_alarms           = 4 + length(data.terraform_remote_state.data.outputs.s3_bucket_names)
-    notification_emails    = length(var.alarm_notification_emails)
+    environment         = var.environment
+    dashboard_name      = aws_cloudwatch_dashboard.main.dashboard_name
+    alerts_topic        = aws_sns_topic.alerts.name
+    log_retention_days  = var.cloudwatch_log_retention_days
+    container_insights  = var.enable_container_insights
+    total_alarms        = 4 + length(data.terraform_remote_state.data.outputs.s3_bucket_names)
+    notification_emails = length(var.alarm_notification_emails)
   }
 }

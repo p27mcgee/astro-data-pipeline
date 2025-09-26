@@ -6,7 +6,7 @@ data "archive_file" "s3_trigger_lambda" {
   source {
     content = templatefile("${path.module}/lambda/s3_trigger.py", {
       airflow_namespace = var.airflow_namespace
-      airflow_endpoint = "http://airflow-webserver.${var.airflow_namespace}:8080"
+      airflow_endpoint  = "http://airflow-webserver.${var.airflow_namespace}:8080"
     })
     filename = "index.py"
   }
@@ -72,12 +72,12 @@ resource "aws_iam_role_policy_attachment" "lambda_s3_policy" {
 
 # Lambda function to trigger Airflow DAGs when FITS files arrive
 resource "aws_lambda_function" "s3_trigger" {
-  filename         = data.archive_file.s3_trigger_lambda.output_path
-  function_name    = "${var.project_name}-s3-trigger"
-  role            = aws_iam_role.s3_trigger_lambda.arn
-  handler         = "index.lambda_handler"
-  runtime         = "python3.9"
-  timeout         = 60
+  filename      = data.archive_file.s3_trigger_lambda.output_path
+  function_name = "${var.project_name}-s3-trigger"
+  role          = aws_iam_role.s3_trigger_lambda.arn
+  handler       = "index.lambda_handler"
+  runtime       = "python3.9"
+  timeout       = 60
 
   source_code_hash = data.archive_file.s3_trigger_lambda.output_base64sha256
 

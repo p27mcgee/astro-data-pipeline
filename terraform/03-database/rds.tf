@@ -76,10 +76,10 @@ resource "aws_db_instance" "main" {
   publicly_accessible    = false
 
   # Availability and backup configuration
-  multi_az               = var.rds_multi_az
+  multi_az                = var.rds_multi_az
   backup_retention_period = var.rds_backup_retention_period
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "sun:04:00-sun:05:00"
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "sun:04:00-sun:05:00"
 
   # Parameter and option groups
   parameter_group_name = aws_db_parameter_group.postgres.name
@@ -90,9 +90,9 @@ resource "aws_db_instance" "main" {
   monitoring_role_arn          = var.rds_monitoring_interval > 0 ? aws_iam_role.rds_enhanced_monitoring[0].arn : null
 
   # Deletion protection (disabled for staging)
-  deletion_protection     = var.environment == "prod"
-  delete_automated_backups = true
-  skip_final_snapshot     = var.environment != "prod"
+  deletion_protection       = var.environment == "prod"
+  delete_automated_backups  = true
+  skip_final_snapshot       = var.environment != "prod"
   final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
 
   tags = merge(var.additional_tags, {
