@@ -73,7 +73,7 @@ output "db_parameter_group_name" {
 # PostGIS Extension Installation Instructions
 output "postgis_installation_guide" {
   description = "PostGIS extension installation guide for application developers"
-  value = <<-EOT
+  value       = <<-EOT
     PostGIS Extension: APPLICATION-LEVEL INSTALLATION REQUIRED
 
     The PostgreSQL database is ready and PostGIS-compatible, but PostGIS extension

@@ -15,7 +15,7 @@ resource "aws_db_parameter_group" "postgres" {
 
   # PostgreSQL configuration optimized for astronomical data
   parameter {
-    name  = "shared_preload_libraries"
+    name = "shared_preload_libraries"
     # Note postgis is not a valid shared_preload_libraries
     # After database creation run SQL: CREATE EXTENSION postgis; to install
     value = "pg_stat_statements"
