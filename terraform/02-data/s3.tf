@@ -2,10 +2,10 @@
 resource "aws_s3_bucket" "data_buckets" {
   for_each = var.s3_buckets
 
-  bucket = "${var.project_name}-${var.environment}-${each.key}-${var.environment}"
+  bucket = "${var.project_name}-${var.environment}-${each.key}-bucket"
 
   tags = merge(var.additional_tags, {
-    Name        = "${var.project_name}-${var.environment}-${each.key}"
+    Name        = "${var.project_name}-${var.environment}-${each.key}-bucket"
     Environment = var.environment
     Purpose     = each.key
   })
@@ -59,6 +59,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "data_buckets" {
     content {
       id     = rule.value.id
       status = rule.value.status
+
+      filter {}
 
       dynamic "transition" {
         for_each = rule.value.transitions

@@ -15,7 +15,7 @@ resource "aws_vpc" "main" {
   enable_dns_support   = true
 
   tags = merge(var.additional_tags, {
-    Name                                            = "${var.project_name}-${var.environment}-vpc"
+    Name                                                               = "${var.project_name}-${var.environment}-vpc"
     "kubernetes.io/cluster/${var.project_name}-${var.environment}-eks" = "shared"
   })
 }
@@ -39,10 +39,10 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = false # Security best practice - explicitly assign public IPs when needed
 
   tags = merge(var.additional_tags, {
-    Name                                            = "${var.project_name}-${var.environment}-public-subnet-${count.index + 1}"
-    Type                                            = "public"
+    Name                                                               = "${var.project_name}-${var.environment}-public-subnet-${count.index + 1}"
+    Type                                                               = "public"
     "kubernetes.io/cluster/${var.project_name}-${var.environment}-eks" = "shared"
-    "kubernetes.io/role/elb"                        = "1"
+    "kubernetes.io/role/elb"                                           = "1"
   })
 }
 
@@ -55,10 +55,10 @@ resource "aws_subnet" "private" {
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = merge(var.additional_tags, {
-    Name                                            = "${var.project_name}-${var.environment}-private-subnet-${count.index + 1}"
-    Type                                            = "private"
+    Name                                                               = "${var.project_name}-${var.environment}-private-subnet-${count.index + 1}"
+    Type                                                               = "private"
     "kubernetes.io/cluster/${var.project_name}-${var.environment}-eks" = "owned"
-    "kubernetes.io/role/internal-elb"               = "1"
+    "kubernetes.io/role/internal-elb"                                  = "1"
   })
 }
 
