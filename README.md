@@ -1,7 +1,12 @@
 # Astronomical Data Processing Pipeline
 
-An astronomical image calibration pipeline designed for the Roman Space Telescope mission, featuring 
+An astronomical image calibration pipeline designed for the Roman Space Telescope mission, featuring
 cloud-native data processing.
+
+**📋 For HR/Hiring Managers**: See [EXECUTIVE-SUMMARY.md](EXECUTIVE-SUMMARY.md) for a concise overview of this portfolio
+project.
+
+---
 
 ## 🌟 Overview
 
@@ -122,7 +127,7 @@ kubectl apply -f kubernetes/base/
 - **Observability**: Comprehensive monitoring and performance metrics
 - **Cost Optimization**: Intelligent resource management and storage tiering
 
-## 📊 Performance
+## 📊 Performance Goals
 
 - **Processing Speed**: 500+ FITS files per hour per node
 - **Data Throughput**: 10GB/hour sustained processing rate
@@ -135,13 +140,6 @@ kubectl apply -f kubernetes/base/
 - IAM roles with least-privilege access
 - Encryption at rest and in transit
 - Security scanning integrated in CI/CD pipeline
-
-## 📚 Documentation
-
-- [Architecture Overview](docs/ARCHITECTURE.md)
-- [Deployment Guide](docs/DEPLOYMENT.md) 
-- [Performance Tuning](docs/PERFORMANCE_TUNING.md)
-- [API Documentation](docs/API.md)
 
 ## 🧪 Testing Strategy
 

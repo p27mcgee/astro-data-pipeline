@@ -113,24 +113,14 @@ for layer in "${PROCESSING_LAYERS[@]}"; do
     if [[ ! -d ".terraform" ]]; then
         log_info "Initializing Terraform for $layer..."
 
-        # Check if we're in CI environment and have backend config
-        if [[ -n "$TERRAFORM_STATE_BUCKET" ]]; then
-            log_info "Configuring remote state backend for CI..."
-            terraform init \
-                -backend-config="bucket=$TERRAFORM_STATE_BUCKET" \
-                -backend-config="key=$layer/terraform.tfstate" \
-                -backend-config="region=${AWS_REGION:-us-east-1}" \
-                -backend-config="dynamodb_table=${TERRAFORM_STATE_TABLE}" \
-                -backend-config="encrypt=true"
-        else
-            terraform init
-        fi
+        # Initialize with remote backend
+        terraform init
     fi
 
-    # Select workspace in CI environment
-    if [[ -n "$TERRAFORM_STATE_BUCKET" ]]; then
+    # Initialize workspace if needed
+    if [[ "$ACTION" != "validate" ]]; then
         WORKSPACE=$(echo "$TFVARS_FILE" | sed 's/.tfvars//')
-        log_info "Selecting workspace: $WORKSPACE"
+        log_info "Configuring workspace for environment: $WORKSPACE"
         terraform workspace select "$WORKSPACE" 2>/dev/null || terraform workspace new "$WORKSPACE"
     fi
 
@@ -152,7 +142,13 @@ for layer in "${PROCESSING_LAYERS[@]}"; do
             # Run Checkov security scan if available
             if command -v checkov &> /dev/null; then
                 log_info "Running Checkov security scan for $layer..."
-                checkov -d . --framework terraform --compact --quiet --download-external-modules true || true
+
+                # Check for project-level checkov configuration
+                if [[ -f "../../.checkov.yml" ]]; then
+                    checkov -d . --config-file ../../.checkov.yml --compact --quiet || true
+                else
+                    checkov -d . --framework terraform --compact --quiet --download-external-modules true || true
+                fi
             else
                 log_warning "Checkov not found - skipping security scan (install with 'pip install checkov')"
             fi

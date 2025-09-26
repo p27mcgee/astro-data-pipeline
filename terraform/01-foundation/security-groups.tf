@@ -1,7 +1,7 @@
-# Security Groups for different tiers
-# These are foundational and used by other layers
+# Foundational security groups for network access control
+# These provide secure communication between infrastructure tiers
 
-# EKS Cluster Security Group
+# Control plane security group for EKS cluster API server
 resource "aws_security_group" "eks_cluster" {
   name_prefix = "${var.project_name}-eks-cluster-"
   description = "Security group for EKS cluster control plane communication"
@@ -24,7 +24,7 @@ resource "aws_security_group" "eks_cluster" {
   })
 }
 
-# EKS Node Security Group
+# Worker node security group for EKS pods and inter-node communication
 resource "aws_security_group" "eks_nodes" {
   name_prefix = "${var.project_name}-eks-nodes-"
   description = "Security group for EKS worker nodes and pod-to-pod communication"
@@ -32,10 +32,10 @@ resource "aws_security_group" "eks_nodes" {
 
   ingress {
     description = "Allow all TCP traffic between EKS nodes for pod-to-pod communication"
-    from_port = 0
-    to_port   = 65535
-    protocol  = "tcp"
-    self      = true
+    from_port   = 0
+    to_port     = 65535
+    protocol    = "tcp"
+    self        = true
   }
 
   # EKS worker nodes require permissive egress for:
@@ -56,7 +56,7 @@ resource "aws_security_group" "eks_nodes" {
   })
 }
 
-# RDS Security Group
+# Database security group allowing access only from EKS nodes
 resource "aws_security_group" "rds" {
   name_prefix = "${var.project_name}-rds-"
   description = "Security group for PostgreSQL RDS database access from EKS nodes"

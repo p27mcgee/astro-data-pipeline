@@ -23,6 +23,12 @@ variable "eks_cluster_version" {
   default     = "1.28"
 }
 
+variable "eks_public_access_cidrs" {
+  description = "List of CIDR blocks that can access the EKS cluster public endpoint"
+  type        = list(string)
+  default     = ["0.0.0.0/0"] # Default to open access - override in tfvars for security
+}
+
 variable "eks_node_groups" {
   description = "Configuration for EKS node groups"
   type = map(object({

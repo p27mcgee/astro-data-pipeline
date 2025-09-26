@@ -22,9 +22,9 @@ on:
         options:
           - validate
           - plan
-      # TODO Don't allow these yet. (or ever?)
-      #          - apply
-      #          - destroy
+          - apply
+          # TODO Don't allow this yet.
+          # - destroy
       environment:
         description: 'Target environment'
         required: true
@@ -41,9 +41,10 @@ on:
         options:
           - '1'
           - '2'
-          - '3'
-          - '4'
-          - '5'
+          # TODO
+          # - '3'
+          # - '4'
+          # - '5'
 
 env:
   TF_VERSION: '1.13.3'
@@ -175,6 +176,8 @@ jobs:
       with:
         directory: terraform
         framework: terraform
+        # TODO maybe no path prefix?
+        config_file: ../.checkov.yml
         output_format: sarif
         output_file_path: checkov-results.sarif
         download_external_modules: true
@@ -238,8 +241,6 @@ jobs:
     - name: Terraform Plan - Layered Architecture
       id: tf-plan
       env:
-        TERRAFORM_STATE_BUCKET: ${{ secrets.TERRAFORM_STATE_BUCKET }}
-        TERRAFORM_STATE_TABLE: ${{ secrets.TERRAFORM_STATE_TABLE }}
         MAX_LAYER: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
       run: |
         cd terraform
@@ -414,8 +415,6 @@ jobs:
 
     - name: Terraform Apply - Layered Architecture
       env:
-        TERRAFORM_STATE_BUCKET: ${{ secrets.TERRAFORM_STATE_BUCKET }}
-        TERRAFORM_STATE_TABLE: ${{ secrets.TERRAFORM_STATE_TABLE }}
         MAX_LAYER: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
       run: |
         cd terraform
@@ -435,11 +434,11 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Layer Status:" >> $GITHUB_STEP_SUMMARY
         MAX_LAYER=${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
-        [[ $MAX_LAYER -ge 1 ]] && echo "✅ Layer 1: Foundation (VPC, networking)" >> $GITHUB_STEP_SUMMARY
-        [[ $MAX_LAYER -ge 2 ]] && echo "✅ Layer 2: Data (S3, Lambda)" >> $GITHUB_STEP_SUMMARY
-        [[ $MAX_LAYER -ge 3 ]] && echo "✅ Layer 3: Database (RDS PostgreSQL)" >> $GITHUB_STEP_SUMMARY
-        [[ $MAX_LAYER -ge 4 ]] && echo "✅ Layer 4: Compute (EKS cluster)" >> $GITHUB_STEP_SUMMARY
-        [[ $MAX_LAYER -ge 5 ]] && echo "✅ Layer 5: Monitoring (CloudWatch)" >> $GITHUB_STEP_SUMMARY
+        [[ $MAX_LAYER -ge 1 ]] && echo "✅ Layer 1: Foundation (VPC, networking)" >> $GITHUB_STEP_SUMMARY || true
+        [[ $MAX_LAYER -ge 2 ]] && echo "✅ Layer 2: Data (S3, Lambda)" >> $GITHUB_STEP_SUMMARY || true
+        [[ $MAX_LAYER -ge 3 ]] && echo "✅ Layer 3: Database (RDS PostgreSQL)" >> $GITHUB_STEP_SUMMARY || true
+        [[ $MAX_LAYER -ge 4 ]] && echo "✅ Layer 4: Compute (EKS cluster)" >> $GITHUB_STEP_SUMMARY || true
+        [[ $MAX_LAYER -ge 5 ]] && echo "✅ Layer 5: Monitoring (CloudWatch)" >> $GITHUB_STEP_SUMMARY || true
 
     - name: Export Combined Terraform Outputs
       run: |
@@ -461,20 +460,21 @@ jobs:
         name: terraform-outputs-staging-layered
         path: terraform/combined-outputs-staging.json
 
-    - name: Notify Staging Deployment
-      uses: 8398a7/action-slack@v3
-      if: always()
-      with:
-        status: ${{ job.status }}
-        channel: '#infrastructure'
-        text: |
-          🏗️ Terraform Apply (Staging) - Layered Architecture: ${{ job.status }}
-          Environment: Staging
-          Actor: ${{ github.actor }}
-          Commit: ${{ github.sha }}
-          Architecture: 5-Layer Enterprise Pattern
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  # FIXME
+  #    - name: Notify Staging Deployment
+  #      uses: 8398a7/action-slack@v3
+  #      if: always() && ${{ secrets.SLACK_WEBHOOK_URL }} != ''
+  #      with:
+  #        status: ${{ job.status }}
+  #        channel: '#infrastructure'
+  #        text: |
+  #          🏗️ Terraform Apply (Staging) - Layered Architecture: ${{ job.status }}
+  #          Environment: Staging
+  #          Actor: ${{ github.actor }}
+  #          Commit: ${{ github.sha }}
+  #          Architecture: 5-Layer Enterprise Pattern
+  #      env:
+  #        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
   #  terraform-apply-production:
   #    name: Terraform Apply (Production)
@@ -614,27 +614,26 @@ jobs:
 
     - name: Terraform Destroy - Layered Architecture
       env:
-        TERRAFORM_STATE_BUCKET: ${{ secrets.TERRAFORM_STATE_BUCKET }}
-        TERRAFORM_STATE_TABLE: ${{ secrets.TERRAFORM_STATE_TABLE }}
         MAX_LAYER: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
       run: |
         cd terraform
         # Execute destruction using the layered deployment script
         ./ci/deploy-layers.sh ${{ inputs.environment }}.tfvars destroy $MAX_LAYER
 
-    - name: Notify Destruction
-      uses: 8398a7/action-slack@v3
-      if: always()
-      with:
-        status: ${{ job.status }}
-        channel: '#infrastructure-critical'
-        text: |
-          ⚠️ TERRAFORM DESTROY - Layered Architecture: ${{ job.status }}
-          Environment: ${{ inputs.environment }}
-          Actor: ${{ github.actor }}
-          Max Layer: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
-
-          Infrastructure layers 1-${{ inputs.max_layer || '1' }} in ${{ inputs.environment }} have been destroyed.
-          (Reverse order destruction)
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+# FIXME
+#    - name: Notify Destruction
+#      uses: 8398a7/action-slack@v3
+#      if: always()
+#      with:
+#        status: ${{ job.status }}
+#        channel: '#infrastructure-critical'
+#        text: |
+#          ⚠️ TERRAFORM DESTROY - Layered Architecture: ${{ job.status }}
+#          Environment: ${{ inputs.environment }}
+#          Actor: ${{ github.actor }}
+#          Max Layer: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
+#
+#          Infrastructure layers 1-${{ inputs.max_layer || '1' }} in ${{ inputs.environment }} have been destroyed.
+#          (Reverse order destruction)
+#      env:
+#        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

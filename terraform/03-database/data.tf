@@ -1,4 +1,4 @@
-# Data sources to import foundation layer outputs
+# Import foundation layer outputs for VPC and security group configuration
 data "terraform_remote_state" "foundation" {
   backend = "local"
   config = {

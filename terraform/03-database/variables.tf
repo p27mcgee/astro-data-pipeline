@@ -95,6 +95,12 @@ variable "enable_secrets_manager" {
   default     = true
 }
 
+variable "enable_kms_encryption" {
+  description = "Enable customer-managed KMS encryption for CloudWatch logs"
+  type        = bool
+  default     = true
+}
+
 variable "additional_tags" {
   description = "Additional tags to apply to resources"
   type        = map(string)

@@ -1,4 +1,4 @@
-# EKS Cluster
+# Kubernetes cluster for running astronomical data processing workloads
 resource "aws_eks_cluster" "main" {
   name     = "${var.project_name}-eks"
   role_arn = aws_iam_role.eks_cluster.arn
@@ -8,7 +8,7 @@ resource "aws_eks_cluster" "main" {
     subnet_ids              = concat(data.terraform_remote_state.foundation.outputs.private_subnet_ids, data.terraform_remote_state.foundation.outputs.public_subnet_ids)
     endpoint_private_access = true
     endpoint_public_access  = true
-    public_access_cidrs     = ["0.0.0.0/0"]
+    public_access_cidrs     = var.eks_public_access_cidrs
     security_group_ids      = [data.terraform_remote_state.foundation.outputs.eks_cluster_security_group_id]
   }
 
@@ -32,7 +32,7 @@ resource "aws_eks_cluster" "main" {
   })
 }
 
-# EKS Cluster IAM Role
+# IAM service role allowing EKS to manage cluster resources
 resource "aws_iam_role" "eks_cluster" {
   name = "${var.project_name}-eks-cluster-role"
 
@@ -54,18 +54,19 @@ resource "aws_iam_role" "eks_cluster" {
   })
 }
 
-# EKS Cluster IAM Role Policy Attachments
+# Attach AWS managed policy for EKS cluster management
 resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
   role       = aws_iam_role.eks_cluster.name
 }
 
+# Attach policy for EKS to manage VPC networking resources
 resource "aws_iam_role_policy_attachment" "eks_vpc_resource_controller" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
   role       = aws_iam_role.eks_cluster.name
 }
 
-# EKS Node Groups
+# Managed worker node groups for running containerized applications
 resource "aws_eks_node_group" "main" {
   for_each = var.eks_node_groups
 
@@ -114,7 +115,7 @@ resource "aws_eks_node_group" "main" {
   })
 }
 
-# EKS Node Group IAM Role
+# IAM role for EKS worker nodes to join cluster and access AWS services
 resource "aws_iam_role" "eks_nodes" {
   name = "${var.project_name}-eks-nodes-role"
 
@@ -136,23 +137,25 @@ resource "aws_iam_role" "eks_nodes" {
   })
 }
 
-# EKS Node Group IAM Role Policy Attachments
+# Attach AWS managed policy for EKS worker node permissions
 resource "aws_iam_role_policy_attachment" "eks_worker_node_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
   role       = aws_iam_role.eks_nodes.name
 }
 
+# Attach policy for Kubernetes pod networking (CNI)
 resource "aws_iam_role_policy_attachment" "eks_cni_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
   role       = aws_iam_role.eks_nodes.name
 }
 
+# Attach policy for pulling container images from ECR
 resource "aws_iam_role_policy_attachment" "eks_container_registry_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
   role       = aws_iam_role.eks_nodes.name
 }
 
-# Additional IAM policy for S3 access
+# Custom IAM policy granting EKS nodes access to data lake S3 buckets
 resource "aws_iam_policy" "eks_s3_access" {
   name        = "${var.project_name}-eks-s3-access"
   description = "IAM policy for EKS nodes to access S3 buckets"
@@ -177,12 +180,13 @@ resource "aws_iam_policy" "eks_s3_access" {
   })
 }
 
+# Attach custom S3 access policy to worker nodes
 resource "aws_iam_role_policy_attachment" "eks_s3_access" {
   policy_arn = aws_iam_policy.eks_s3_access.arn
   role       = aws_iam_role.eks_nodes.name
 }
 
-# OIDC Provider for EKS
+# OIDC identity provider for Kubernetes service account authentication
 resource "aws_iam_openid_connect_provider" "eks" {
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = [data.tls_certificate.eks.certificates[0].sha1_fingerprint]
@@ -193,32 +197,74 @@ resource "aws_iam_openid_connect_provider" "eks" {
   })
 }
 
-# CloudWatch Log Group for EKS
+# CloudWatch log group for EKS control plane logs with KMS encryption
 resource "aws_cloudwatch_log_group" "eks_cluster" {
   name              = "/aws/eks/${var.project_name}-eks/cluster"
   retention_in_days = var.cloudwatch_log_retention_days
+  kms_key_id        = var.enable_kms_encryption ? aws_kms_key.eks[0].arn : null
 
   tags = merge(var.additional_tags, {
     Name = "${var.project_name}-eks-cluster-logs"
   })
 }
 
-# KMS Key for EKS encryption
+# Customer-managed KMS key for EKS secrets and CloudWatch logs encryption
 resource "aws_kms_key" "eks" {
   count = var.enable_kms_encryption ? 1 : 0
 
-  description             = "KMS key for EKS cluster encryption"
+  description             = "KMS key for EKS cluster and CloudWatch logs encryption"
   deletion_window_in_days = 7
   enable_key_rotation     = true
+
+  # KMS key policy allowing EKS and CloudWatch services
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow CloudWatch Logs service"
+        Effect = "Allow"
+        Principal = {
+          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+        Condition = {
+          ArnEquals = {
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/eks/${var.project_name}-eks/cluster"
+          }
+        }
+      }
+    ]
+  })
 
   tags = merge(var.additional_tags, {
     Name = "${var.project_name}-eks-kms-key"
   })
 }
 
+# Human-readable alias for the EKS encryption KMS key
 resource "aws_kms_alias" "eks" {
   count = var.enable_kms_encryption ? 1 : 0
 
   name          = "alias/${var.project_name}-eks"
   target_key_id = aws_kms_key.eks[0].key_id
 }
+
+# Data sources for KMS key policy
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}

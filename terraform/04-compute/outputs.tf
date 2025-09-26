@@ -53,9 +53,9 @@ output "eks_node_groups" {
   description = "EKS node group information"
   value = {
     for k, v in aws_eks_node_group.main : k => {
-      arn           = v.arn
-      status        = v.status
-      capacity_type = v.capacity_type
+      arn            = v.arn
+      status         = v.status
+      capacity_type  = v.capacity_type
       instance_types = v.instance_types
       scaling_config = v.scaling_config
     }
