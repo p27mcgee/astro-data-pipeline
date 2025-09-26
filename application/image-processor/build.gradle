@@ -18,10 +18,9 @@ dependencies {
     implementation 'org.apache.commons:commons-math3:3.6.1'
     implementation 'org.apache.commons:commons-imaging:1.0.0-alpha5'
 
-    // Image Processing
-    implementation 'org.bytedeco:javacv:1.5.9'
-    implementation 'org.bytedeco:opencv:4.7.0-1.5.9'
-    implementation 'org.bytedeco:javacv-platform:1.5.9'
+    // Industry-standard astronomical image processing - stable releases only
+    implementation 'net.imagej:ij:1.54f'                    // ImageJ core - stable since 2023
+    implementation 'org.apache.commons:commons-math3:3.6.1' // Already stable, reuse existing
 
     // Additional monitoring
     implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
