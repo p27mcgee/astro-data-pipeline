@@ -16,7 +16,9 @@ resource "aws_db_parameter_group" "postgres" {
   # PostgreSQL configuration optimized for astronomical data
   parameter {
     name  = "shared_preload_libraries"
-    value = "pg_stat_statements,postgis"
+    # Note postgis is not a valid shared_preload_libraries
+    # After database creation run SQL: CREATE EXTENSION postgis; to install
+    value = "pg_stat_statements"
   }
 
   parameter {
@@ -49,6 +51,30 @@ resource "random_password" "rds_password" {
   length  = 16
   special = true
 }
+
+# PostGIS Extension Installation Strategy
+# =====================================
+#
+# PROBLEM: PostgreSQL RDS requires PostGIS spatial extension for astronomical data processing.
+# Initial attempts used complex infrastructure approaches:
+# - Lambda functions (failed: psycopg2 import errors, VPC networking complexity)
+# - ECS Fargate tasks (failed: container image compatibility, AWS CLI vs PostgreSQL client conflicts)
+#
+# SOLUTION: Application-level installation during database initialization.
+# AWS RDS PostgreSQL supports PostGIS via simple SQL: CREATE EXTENSION IF NOT EXISTS postgis;
+#
+# IMPLEMENTATION: Applications should execute PostGIS installation on startup:
+# - Spring Boot: @EventListener(ApplicationReadyEvent.class) with jdbcTemplate.execute()
+# - Python: psycopg2 connection with cursor.execute()
+# - Node.js: pg client with await client.query()
+#
+# BENEFITS:
+# - Simple and reliable (follows AWS documentation best practices)
+# - No additional infrastructure required (zero cost, zero maintenance)
+# - Idempotent (safe to run multiple times)
+# - Application owns its dependencies (proper separation of concerns)
+#
+# REFERENCE: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Appendix.PostgreSQL.CommonDBATasks.PostGIS.html
 
 # PostgreSQL RDS instance for astronomical catalog and metadata storage
 resource "aws_db_instance" "main" {
@@ -104,6 +130,15 @@ resource "aws_db_instance" "main" {
   ]
 }
 
+# PostGIS extension will be available in RDS PostgreSQL
+# Note: PostGIS extension can be installed manually after deployment using:
+# CREATE EXTENSION IF NOT EXISTS postgis;
+#
+# For automated installation, the application should handle this on first startup
+# since the database is in private subnets and not accessible from local terraform
+
+# Lambda function to install PostGIS extension via AWS RDS Data API (future enhancement)
+# This would require enabling RDS Data API which has additional costs
 # CloudWatch log group for PostgreSQL database logs with KMS encryption
 resource "aws_cloudwatch_log_group" "rds" {
   name              = "/aws/rds/instance/${var.project_name}-${var.environment}-postgres/postgresql"

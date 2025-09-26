@@ -20,7 +20,7 @@ jobs:
 
     services:
       postgres:
-        image: postgis/postgis:15-3.3
+        image: postgis/postgis:15-3.5
         env:
           POSTGRES_DB: astro_test
           POSTGRES_USER: test_user
