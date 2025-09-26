@@ -121,7 +121,17 @@ for layer in "${PROCESSING_LAYERS[@]}"; do
     if [[ "$ACTION" != "validate" ]]; then
         WORKSPACE=$(echo "$TFVARS_FILE" | sed 's/.tfvars//')
         log_info "Configuring workspace for environment: $WORKSPACE"
-        terraform workspace select "$WORKSPACE" 2>/dev/null || terraform workspace new "$WORKSPACE"
+
+        # Robust workspace selection - avoid false error exits
+        if terraform workspace list | grep -q "^\*\?\s\+$WORKSPACE\$"; then
+            log_info "Switching to existing workspace: $WORKSPACE"
+            terraform workspace select "$WORKSPACE"
+        else
+            log_info "Creating new workspace: $WORKSPACE"
+            terraform workspace new "$WORKSPACE"
+        fi
+
+        log_success "Active workspace: $(terraform workspace show)"
     fi
 
     # Execute the action

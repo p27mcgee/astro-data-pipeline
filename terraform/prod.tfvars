@@ -15,10 +15,10 @@ environment  = "prod"
 project_name = "astro-data-pipeline"
 
 # VPC Configuration - Multi-AZ for high availability
-vpc_cidr                = "10.0.0.0/16"
-public_subnet_cidrs     = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
-private_subnet_cidrs    = ["10.0.10.0/24", "10.0.20.0/24", "10.0.30.0/24"]
-database_subnet_cidrs   = ["10.0.100.0/24", "10.0.101.0/24", "10.0.102.0/24"]
+vpc_cidr              = "10.0.0.0/16"
+public_subnet_cidrs   = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+private_subnet_cidrs  = ["10.0.10.0/24", "10.0.20.0/24", "10.0.30.0/24"]
+database_subnet_cidrs = ["10.0.100.0/24", "10.0.101.0/24", "10.0.102.0/24"]
 
 # EKS Configuration - Production-ready with multiple node groups
 eks_cluster_version = "1.28"
@@ -29,7 +29,7 @@ eks_public_access_cidrs = [
   # "YOUR_CORPORATE_NETWORK/24",    # Office network
   # "YOUR_VPN_GATEWAY/32",          # VPN gateway
   # "YOUR_CI_CD_RUNNER_IP/32"       # GitHub Actions runners (if static)
-  "0.0.0.0/0"  # FIXME: Replace with your authorized IP ranges
+  "0.0.0.0/0" # FIXME: Replace with your authorized IP ranges
 ]
 eks_node_groups = {
   general = {
@@ -40,8 +40,8 @@ eks_node_groups = {
       min_size     = 2
     }
     capacity_type = "ON_DEMAND"
-    ami_type     = "AL2_x86_64"
-    disk_size    = 50
+    ami_type      = "AL2_x86_64"
+    disk_size     = 50
     labels = {
       "node.kubernetes.io/workload" = "general"
     }
@@ -55,8 +55,8 @@ eks_node_groups = {
       min_size     = 0
     }
     capacity_type = "SPOT"
-    ami_type     = "AL2_x86_64"
-    disk_size    = 100
+    ami_type      = "AL2_x86_64"
+    disk_size     = 100
     labels = {
       "node.kubernetes.io/workload" = "compute"
     }
@@ -76,8 +76,8 @@ eks_node_groups = {
       min_size     = 0
     }
     capacity_type = "ON_DEMAND"
-    ami_type     = "AL2_x86_64"
-    disk_size    = 100
+    ami_type      = "AL2_x86_64"
+    disk_size     = 100
     labels = {
       "node.kubernetes.io/workload" = "memory-intensive"
     }
@@ -92,18 +92,18 @@ eks_node_groups = {
 }
 
 # RDS Configuration - Production-ready with high availability
-rds_instance_class           = "db.r5.xlarge"
-rds_allocated_storage        = 500
-rds_max_allocated_storage    = 2000
-rds_storage_type            = "gp3"
-rds_engine_version          = "15.4"
-rds_database_name           = "astro_catalog"
-rds_username                = "astro_user"
-rds_backup_retention_period = 30
-rds_multi_az               = true
-rds_storage_encrypted      = true
+rds_instance_class               = "db.r5.xlarge"
+rds_allocated_storage            = 500
+rds_max_allocated_storage        = 2000
+rds_storage_type                 = "gp3"
+rds_engine_version               = "15.4"
+rds_database_name                = "astro_catalog"
+rds_username                     = "astro_user"
+rds_backup_retention_period      = 30
+rds_multi_az                     = true
+rds_storage_encrypted            = true
 rds_performance_insights_enabled = true
-rds_monitoring_interval    = 60
+rds_monitoring_interval          = 60
 
 # S3 Configuration - Full lifecycle management for production
 s3_buckets = {
@@ -128,7 +128,7 @@ s3_buckets = {
           }
         ]
         expiration = {
-          days = 2555  # 7 years
+          days = 2555 # 7 years
         }
       }
     ]
@@ -154,7 +154,7 @@ s3_buckets = {
           }
         ]
         expiration = {
-          days = 3650  # 10 years
+          days = 3650 # 10 years
         }
       }
     ]
@@ -176,7 +176,7 @@ s3_buckets = {
           }
         ]
         expiration = {
-          days = 10950  # 30 years
+          days = 10950 # 30 years
         }
       }
     ]
@@ -185,32 +185,24 @@ s3_buckets = {
 
 # Monitoring Configuration - Full observability
 cloudwatch_log_retention_days = 90
-enable_container_insights    = true
+enable_container_insights     = true
 
 # Airflow Configuration
-airflow_namespace    = "airflow"
+airflow_namespace     = "airflow"
 airflow_chart_version = "1.11.0"
 
 # Auto Scaling Configuration
-enable_cluster_autoscaler         = true
+enable_cluster_autoscaler        = true
 enable_horizontal_pod_autoscaler = true
 
 # Security Configuration - Full encryption
 enable_secrets_manager = true
-enable_kms_encryption = true
+enable_kms_encryption  = true
 
 # Cost Optimization
-enable_spot_instances     = true
+enable_spot_instances    = true
 enable_scheduled_scaling = true
 
 # Additional Tags
 additional_tags = {
-  Environment   = "production"
-  Purpose       = "astronomical-data-processing"
-  CostCenter    = "space-telescope-operations"
-  Owner         = "stsci-team"
-  Compliance    = "required"
-  BackupPolicy  = "daily"
-  DrPolicy      = "enabled"
-  Monitoring    = "24x7"
 }

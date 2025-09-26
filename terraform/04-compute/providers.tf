@@ -24,11 +24,13 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "astro-data-pipeline"
-      Environment = var.environment
-      ManagedBy   = "terraform"
-      Layer       = "04-compute"
-      Owner       = "stsci-demo"
+      Project            = "astro-data-pipeline"
+      Environment        = var.environment
+      Owner              = "pmcgee"
+      ManagedBy          = "terraform"
+      TerraformWorkspace = terraform.workspace
+      Version            = "0.1"
+      Layer              = "04-compute"
     }
   }
 }

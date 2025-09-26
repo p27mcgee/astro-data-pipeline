@@ -17,10 +17,13 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = var.project_name
-      Environment = var.environment
-      ManagedBy   = "terraform"
-      Layer       = "state-backend"
+      Project            = var.project_name
+      Environment        = var.environment
+      Owner              = "pmcgee"
+      ManagedBy          = "terraform"
+      TerraformWorkspace = terraform.workspace
+      Version            = "0.1"
+      Layer              = "state-backend"
     }
   }
 }
@@ -86,9 +89,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
 
 # DynamoDB table for state locking to prevent concurrent modifications
 resource "aws_dynamodb_table" "terraform_state_lock" {
-  name           = "${var.project_name}-terraform-state-lock-${var.environment}"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "LockID"
+  name         = "${var.project_name}-terraform-state-lock-${var.environment}"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "LockID"
 
   attribute {
     name = "LockID"

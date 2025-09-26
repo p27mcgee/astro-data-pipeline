@@ -1,17 +1,17 @@
 # Database subnet group using isolated database subnets from foundation layer
 resource "aws_db_subnet_group" "main" {
-  name       = "${var.project_name}-db-subnet-group"
+  name       = "${var.project_name}-${var.environment}-db-subnet-group"
   subnet_ids = data.terraform_remote_state.foundation.outputs.database_subnet_ids
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-db-subnet-group"
+    Name = "${var.project_name}-${var.environment}-db-subnet-group"
   })
 }
 
 # PostgreSQL parameter group optimized for astronomical data processing
 resource "aws_db_parameter_group" "postgres" {
   family = "postgres15"
-  name   = "${var.project_name}-postgres-params"
+  name   = "${var.project_name}-${var.environment}-postgres-params"
 
   # PostgreSQL configuration optimized for astronomical data
   parameter {
@@ -40,7 +40,7 @@ resource "aws_db_parameter_group" "postgres" {
   }
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-postgres-params"
+    Name = "${var.project_name}-${var.environment}-postgres-params"
   })
 }
 
@@ -52,7 +52,7 @@ resource "random_password" "rds_password" {
 
 # PostgreSQL RDS instance for astronomical catalog and metadata storage
 resource "aws_db_instance" "main" {
-  identifier = "${var.project_name}-postgres"
+  identifier = "${var.project_name}-${var.environment}-postgres"
 
   # Engine configuration
   engine         = "postgres"
@@ -93,10 +93,10 @@ resource "aws_db_instance" "main" {
   deletion_protection       = var.environment == "prod"
   delete_automated_backups  = true
   skip_final_snapshot       = var.environment != "prod"
-  final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
+  final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-${var.environment}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-postgres"
+    Name = "${var.project_name}-${var.environment}-postgres"
   })
 
   depends_on = [
@@ -106,12 +106,12 @@ resource "aws_db_instance" "main" {
 
 # CloudWatch log group for PostgreSQL database logs with KMS encryption
 resource "aws_cloudwatch_log_group" "rds" {
-  name              = "/aws/rds/instance/${var.project_name}-postgres/postgresql"
+  name              = "/aws/rds/instance/${var.project_name}-${var.environment}-postgres/postgresql"
   retention_in_days = 7
   kms_key_id        = var.enable_kms_encryption ? aws_kms_key.cloudwatch_logs[0].arn : null
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-rds-logs"
+    Name = "${var.project_name}-${var.environment}-rds-logs"
   })
 }
 
@@ -119,7 +119,7 @@ resource "aws_cloudwatch_log_group" "rds" {
 resource "aws_iam_role" "rds_enhanced_monitoring" {
   count = var.rds_monitoring_interval > 0 ? 1 : 0
 
-  name = "${var.project_name}-rds-enhanced-monitoring"
+  name = "${var.project_name}-${var.environment}-rds-enhanced-monitoring"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -135,7 +135,7 @@ resource "aws_iam_role" "rds_enhanced_monitoring" {
   })
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-rds-enhanced-monitoring-role"
+    Name = "${var.project_name}-${var.environment}-rds-enhanced-monitoring-role"
   })
 }
 
@@ -151,11 +151,11 @@ resource "aws_iam_role_policy_attachment" "rds_enhanced_monitoring" {
 resource "aws_secretsmanager_secret" "rds_credentials" {
   count = var.enable_secrets_manager ? 1 : 0
 
-  name        = "${var.project_name}-rds-credentials"
+  name        = "${var.project_name}-${var.environment}-rds-credentials"
   description = "RDS credentials for ${var.project_name} PostgreSQL database"
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-rds-credentials"
+    Name = "${var.project_name}-${var.environment}-rds-credentials"
   })
 }
 
@@ -210,7 +210,7 @@ resource "aws_kms_key" "cloudwatch_logs" {
         Resource = "*"
         Condition = {
           ArnEquals = {
-            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/rds/instance/${var.project_name}-postgres/postgresql"
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/rds/instance/${var.project_name}-${var.environment}-postgres/postgresql"
           }
         }
       }
@@ -218,7 +218,7 @@ resource "aws_kms_key" "cloudwatch_logs" {
   })
 
   tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-cloudwatch-logs-kms-key"
+    Name = "${var.project_name}-${var.environment}-cloudwatch-logs-kms-key"
   })
 }
 
@@ -226,7 +226,7 @@ resource "aws_kms_key" "cloudwatch_logs" {
 resource "aws_kms_alias" "cloudwatch_logs" {
   count = var.enable_kms_encryption ? 1 : 0
 
-  name          = "alias/${var.project_name}-cloudwatch-logs"
+  name          = "alias/${var.project_name}-${var.environment}-cloudwatch-logs"
   target_key_id = aws_kms_key.cloudwatch_logs[0].key_id
 }
 
