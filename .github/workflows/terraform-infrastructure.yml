@@ -17,8 +17,7 @@ on:
           - validate
           - plan
           - apply
-          # TODO Don't allow this yet.
-          # - destroy
+          - destroy
       environment:
         description: 'Target environment'
         required: true
@@ -27,8 +26,8 @@ on:
         options:
           - staging
           - production
-      max_layer:
-        description: 'Maximum layer to process (1-5)'
+      last_layer:
+        description: 'Last layer to process (1-5)'
         required: true
         default: '3'
         type: choice
@@ -36,16 +35,15 @@ on:
           - '1'
           - '2'
           - '3'
-          # TODO
-          # - '4'
-          # - '5'
+          - '4'
+          - '5'
 
 env:
   TF_VERSION: '1.13.3'
   AWS_REGION: us-east-1
   TF_IN_AUTOMATION: true
   TF_INPUT: false
-  DEFAULT_MAX_LAYER: '3'  # Default for non-dispatch runs
+  DEFAULT_LAST_LAYER: '3'  # Default for non-dispatch runs
 
 permissions:
   id-token: write
@@ -235,13 +233,13 @@ jobs:
     - name: Terraform Plan - Layered Architecture
       id: tf-plan
       env:
-        MAX_LAYER: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
+        LAST_LAYER: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
       run: |
         cd terraform
         # Use the layered deployment script for planning
         chmod +x ci/deploy-layers.sh
         export exitcode=0
-        ./ci/deploy-layers.sh staging.tfvars plan $MAX_LAYER || export exitcode=$?
+        ./ci/deploy-layers.sh staging.tfvars plan $LAST_LAYER || export exitcode=$?
 
         echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
 
@@ -262,7 +260,7 @@ jobs:
         echo "✅ All layers validated and planned successfully" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Processing Configuration:" >> $GITHUB_STEP_SUMMARY
-        echo "- Maximum layer: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Last layer: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Available Layers:" >> $GITHUB_STEP_SUMMARY
         echo "- 1: 01-foundation (VPC, networking, security groups)" >> $GITHUB_STEP_SUMMARY
@@ -406,12 +404,12 @@ jobs:
 
     - name: Terraform Apply - Layered Architecture
       env:
-        MAX_LAYER: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
+        LAST_LAYER: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
       run: |
         cd terraform
         # Use the layered deployment script for applying
         chmod +x ci/deploy-layers.sh
-        ./ci/deploy-layers.sh staging.tfvars apply $MAX_LAYER
+        ./ci/deploy-layers.sh staging.tfvars apply $LAST_LAYER
 
     - name: Terraform Output - Layered Architecture
       run: |
@@ -421,15 +419,15 @@ jobs:
         echo "🚀 Infrastructure successfully applied to staging environment" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Configuration:" >> $GITHUB_STEP_SUMMARY
-        echo "- Maximum layer processed: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Last layer processed: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Layer Status:" >> $GITHUB_STEP_SUMMARY
-        MAX_LAYER=${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
-        [[ $MAX_LAYER -ge 1 ]] && echo "✅ Layer 1: Foundation (VPC, networking)" >> $GITHUB_STEP_SUMMARY || true
-        [[ $MAX_LAYER -ge 2 ]] && echo "✅ Layer 2: Data (S3, Lambda)" >> $GITHUB_STEP_SUMMARY || true
-        [[ $MAX_LAYER -ge 3 ]] && echo "✅ Layer 3: Database (RDS PostgreSQL)" >> $GITHUB_STEP_SUMMARY || true
-        [[ $MAX_LAYER -ge 4 ]] && echo "✅ Layer 4: Compute (EKS cluster)" >> $GITHUB_STEP_SUMMARY || true
-        [[ $MAX_LAYER -ge 5 ]] && echo "✅ Layer 5: Monitoring (CloudWatch)" >> $GITHUB_STEP_SUMMARY || true
+        LAST_LAYER=${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
+        [[ $LAST_LAYER -ge 1 ]] && echo "✅ Layer 1: Foundation (VPC, networking)" >> $GITHUB_STEP_SUMMARY || true
+        [[ $LAST_LAYER -ge 2 ]] && echo "✅ Layer 2: Data (S3, Lambda)" >> $GITHUB_STEP_SUMMARY || true
+        [[ $LAST_LAYER -ge 3 ]] && echo "✅ Layer 3: Database (RDS PostgreSQL)" >> $GITHUB_STEP_SUMMARY || true
+        [[ $LAST_LAYER -ge 4 ]] && echo "✅ Layer 4: Compute (EKS cluster)" >> $GITHUB_STEP_SUMMARY || true
+        [[ $LAST_LAYER -ge 5 ]] && echo "✅ Layer 5: Monitoring (CloudWatch)" >> $GITHUB_STEP_SUMMARY || true
 
     - name: Export Combined Terraform Outputs
       run: |
@@ -591,7 +589,7 @@ jobs:
       with:
         secret: ${{ github.token }}
         approvers: ${{ secrets.DESTROY_APPROVERS }}
-        minimum-approvals: 2
+        minimum-approvals: 1
         issue-title: "Terraform Destroy Approval Required"
         issue-body: |
           ⚠️ **DESTRUCTIVE ACTION** ⚠️
@@ -606,11 +604,11 @@ jobs:
 
     - name: Terraform Destroy - Layered Architecture
       env:
-        MAX_LAYER: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
+        LAST_LAYER: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
       run: |
         cd terraform
         # Execute destruction using the layered deployment script
-        ./ci/deploy-layers.sh ${{ inputs.environment }}.tfvars destroy $MAX_LAYER
+        ./ci/deploy-layers.sh ${{ inputs.environment }}.tfvars destroy $LAST_LAYER
 
 # FIXME
 #    - name: Notify Destruction
@@ -623,9 +621,9 @@ jobs:
 #          ⚠️ TERRAFORM DESTROY - Layered Architecture: ${{ job.status }}
 #          Environment: ${{ inputs.environment }}
 #          Actor: ${{ github.actor }}
-#          Max Layer: ${{ inputs.max_layer || env.DEFAULT_MAX_LAYER }}
+#          Last Layer: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
 #
-#          Infrastructure layers 1-${{ inputs.max_layer || '1' }} in ${{ inputs.environment }} have been destroyed.
+#          Infrastructure layers 1-${{ inputs.last_layer || '1' }} in ${{ inputs.environment }} have been destroyed.
 #          (Reverse order destruction)
 #      env:
 #        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

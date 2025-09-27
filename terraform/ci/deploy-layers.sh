@@ -7,17 +7,28 @@ set -e
 # Configuration
 TFVARS_FILE=${1:-"staging.tfvars"}
 ACTION=${2:-"plan"}
-MAX_LAYER=${3:-${MAX_LAYER:-1}}  # Default to layer 1, can be overridden by env var
+LAST_LAYER=${3:-${LAST_LAYER:-1}}  # Default to layer 1, can be overridden by env var
 ALL_LAYERS=("01-foundation" "02-data" "03-database" "04-compute" "05-monitoring")
 
-# Determine layers to process based on MAX_LAYER
+# Determine layers to process based on LAST_LAYER and ACTION
 LAYERS=()
-for i in "${!ALL_LAYERS[@]}"; do
-    layer_num=$((i + 1))
-    if [[ $layer_num -le $MAX_LAYER ]]; then
-        LAYERS+=("${ALL_LAYERS[$i]}")
-    fi
-done
+if [[ "$ACTION" == "destroy" ]]; then
+    # For destroy: LAST_LAYER is the lowest layer to destroy, destroy upwards
+    for i in "${!ALL_LAYERS[@]}"; do
+        layer_num=$((i + 1))
+        if [[ $layer_num -ge $LAST_LAYER ]]; then
+            LAYERS+=("${ALL_LAYERS[$i]}")
+        fi
+    done
+else
+    # For deploy/plan/validate: LAST_LAYER is the highest layer to process
+    for i in "${!ALL_LAYERS[@]}"; do
+        layer_num=$((i + 1))
+        if [[ $layer_num -le $LAST_LAYER ]]; then
+            LAYERS+=("${ALL_LAYERS[$i]}")
+        fi
+    done
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -48,24 +59,29 @@ if [[ ! -f "$TFVARS_FILE" ]] && [[ "$ACTION" != "validate" ]]; then
     log_error "Terraform variables file '$TFVARS_FILE' not found!"
     log_info "Available files:"
     ls -la *.tfvars.example 2>/dev/null || echo "No example files found"
-    log_info "For validation only, you can use: $0 dummy validate [max_layer]"
+    log_info "For validation only, you can use: $0 dummy validate [last_layer]"
     exit 1
 fi
 
 # Validate action
 if [[ ! "$ACTION" =~ ^(plan|apply|destroy|validate)$ ]]; then
     log_error "Invalid action '$ACTION'. Use: plan, apply, destroy, or validate"
-    log_info "Usage: $0 <tfvars_file> <action> [max_layer]"
+    log_info "Usage: $0 <tfvars_file> <action> [last_layer]"
     log_info "  tfvars_file: Path to .tfvars file (e.g., staging.tfvars)"
     log_info "  action: plan, apply, destroy, or validate"
-    log_info "  max_layer: Maximum layer to process (1-5, default: 1)"
-    log_info "  Environment variable MAX_LAYER can also be used"
+    log_info "  last_layer: For deploy/plan/validate: last layer to build (1-5)"
+    log_info "             For destroy: last layer to destroy (1-5)"
+    log_info "  Environment variable LAST_LAYER can also be used"
+    log_info ""
+    log_info "Examples:"
+    log_info "  $0 staging.tfvars apply 3     # Deploy layers 1, 2, 3 (last built: 3)"
+    log_info "  $0 staging.tfvars destroy 3   # Destroy layers 5, 4, 3 (last destroyed: 3)"
     exit 1
 fi
 
-# Validate max_layer
-if [[ ! "$MAX_LAYER" =~ ^[1-5]$ ]]; then
-    log_error "Invalid max_layer '$MAX_LAYER'. Must be between 1 and 5"
+# Validate last_layer
+if [[ ! "$LAST_LAYER" =~ ^[1-5]$ ]]; then
+    log_error "Invalid last_layer '$LAST_LAYER'. Must be between 1 and 5"
     log_info "Available layers:"
     for i in "${!ALL_LAYERS[@]}"; do
         layer_num=$((i + 1))
@@ -77,13 +93,17 @@ fi
 log_info "Starting layered Terraform deployment..."
 log_info "Variables file: $TFVARS_FILE"
 log_info "Action: $ACTION"
-log_info "Max layer: $MAX_LAYER"
+log_info "Last layer: $LAST_LAYER"
 log_info "Processing layers: ${LAYERS[*]}"
 echo
 
 # Set layer order (reverse for destroy)
 if [[ "$ACTION" == "destroy" ]]; then
-    PROCESSING_LAYERS=($(printf '%s\n' "${LAYERS[@]}" | tac))
+    # Reverse array for destruction (compatible with both macOS and Linux)
+    PROCESSING_LAYERS=()
+    for (( i=${#LAYERS[@]}-1; i>=0; i-- )); do
+        PROCESSING_LAYERS+=("${LAYERS[i]}")
+    done
     log_info "Using reverse order for destruction: ${PROCESSING_LAYERS[*]}"
 else
     PROCESSING_LAYERS=("${LAYERS[@]}")
@@ -204,10 +224,22 @@ for layer in "${PROCESSING_LAYERS[@]}"; do
     echo
 done
 
-# Special handling for destroy (reverse order)
+# Destroy behavior explanation
 if [[ "$ACTION" == "destroy" ]]; then
-    log_warning "Note: For complete destruction, run layers in reverse order:"
-    log_warning "Recommended destroy order: 05-monitoring → 04-compute → 03-database → 02-data → 01-foundation"
+    log_info "Destroy behavior: LAST_LAYER ($LAST_LAYER) was the last layer destroyed"
+    log_info "Layers ${LAYERS[*]} were destroyed in reverse dependency order: ${PROCESSING_LAYERS[*]}"
+    if [[ $LAST_LAYER -gt 1 ]]; then
+        preserved_layers=()
+        for i in "${!ALL_LAYERS[@]}"; do
+            layer_num=$((i + 1))
+            if [[ $layer_num -lt $LAST_LAYER ]]; then
+                preserved_layers+=("${ALL_LAYERS[$i]}")
+            fi
+        done
+        if [[ ${#preserved_layers[@]} -gt 0 ]]; then
+            log_info "Preserved layers: ${preserved_layers[*]}"
+        fi
+    fi
 fi
 
 log_success "All layers processed successfully!"
@@ -216,10 +248,10 @@ log_success "All layers processed successfully!"
 echo
 log_info "=== Deployment Summary ==="
 log_info "Action: $ACTION"
-log_info "Max layer: $MAX_LAYER"
+log_info "Last layer: $LAST_LAYER"
 log_info "Layers processed: ${#LAYERS[@]} (${LAYERS[*]})"
 log_info "Configuration: $TFVARS_FILE"
 
 if [[ "$ACTION" == "plan" ]]; then
-    log_info "Next step: Run './ci/deploy-layers.sh $TFVARS_FILE apply $MAX_LAYER' to deploy"
+    log_info "Next step: Run './ci/deploy-layers.sh $TFVARS_FILE apply $LAST_LAYER' to deploy"
 fi
