@@ -633,7 +633,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: terraform-plan-destroy
     if: needs.terraform-plan-destroy.outputs.tfplanExitCode == 0 && inputs.action == 'destroy'
-    environment: ${{ inputs.environment }}
+    # TODO: Create and configure GitHub production environment with protection rules, then use: ${{ inputs.environment }}
+    environment: staging
 
     permissions:
       id-token: write
@@ -660,21 +661,6 @@ jobs:
         # Explicit OIDC configuration
         audience: sts.amazonaws.com
         output-env-credentials: true
-
-    - name: Wait for Manual Approval
-      run: |
-        echo "🚨 DESTRUCTIVE ACTION REQUESTED 🚨"
-        echo ""
-        echo "Someone has requested to destroy infrastructure in the ${{ inputs.environment }} environment."
-        echo ""
-        echo "Environment: ${{ inputs.environment }}"
-        echo "Last Layer: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}"
-        echo "Requested by: ${{ github.actor }}"
-        echo "Destroy Scope: Layers ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }} through 5 will be destroyed in reverse order"
-        echo ""
-        echo "⚠️  This job will wait for manual approval from repository administrators."
-        echo "📧 Configured reviewers will receive email notifications."
-        echo "✅ Click 'Review deployments' button above to approve or reject."
 
     - name: Terraform Destroy - Layered Architecture
       env:
