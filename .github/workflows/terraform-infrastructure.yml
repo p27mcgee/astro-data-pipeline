@@ -588,19 +588,25 @@ jobs:
       uses: trstringer/manual-approval@v1
       with:
         secret: ${{ github.token }}
-        approvers: ${{ secrets.DESTROY_APPROVERS }}
+        approvers: pmcgee
         minimum-approvals: 1
-        issue-title: "Terraform Destroy Approval Required"
+        issue-title: "Terraform Destroy Approval Required - ${{ inputs.environment }}"
         issue-body: |
           ⚠️ **DESTRUCTIVE ACTION** ⚠️
-          
+
           Someone has requested to destroy infrastructure in the **${{ inputs.environment }}** environment.
-          
+
           **Environment**: ${{ inputs.environment }}
+          **Last Layer**: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
           **Requested by**: ${{ github.actor }}
           **Workflow**: ${{ github.workflow }}
-          
+          **Repository**: ${{ github.repository }}
+
+          **Destroy Scope**: Layers ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }} through 5 will be destroyed in reverse order.
+
           Please review the destroy plan carefully before approving.
+
+          To approve, comment on this issue with: **approve**
 
     - name: Terraform Destroy - Layered Architecture
       env:
