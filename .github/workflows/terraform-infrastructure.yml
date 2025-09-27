@@ -196,11 +196,12 @@ jobs:
         sarif_file: checkov-results.sarif
         category: checkov-terraform
 
-  terraform-plan-staging:
-    name: Terraform Plan (Staging)
+  terraform-plan:
+    name: Terraform Plan
     runs-on: ubuntu-latest
     needs: terraform-validate
-    environment: staging
+    if: inputs.action == 'plan' || inputs.action == 'apply' || github.event_name == 'pull_request'
+    environment: ${{ inputs.environment || 'staging' }}
 
     permissions:
       id-token: write
@@ -209,7 +210,7 @@ jobs:
 
     outputs:
       tfplanExitCode: ${{ steps.tf-plan.outputs.exitcode }}
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -234,12 +235,13 @@ jobs:
       id: tf-plan
       env:
         LAST_LAYER: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
+        ENVIRONMENT: ${{ inputs.environment || 'staging' }}
       run: |
         cd terraform
         # Use the layered deployment script for planning
         chmod +x ci/deploy-layers.sh
         export exitcode=0
-        ./ci/deploy-layers.sh staging.tfvars plan $LAST_LAYER || export exitcode=$?
+        ./ci/deploy-layers.sh ${ENVIRONMENT}.tfvars plan $LAST_LAYER || export exitcode=$?
 
         echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
 
@@ -253,13 +255,16 @@ jobs:
         fi
 
     - name: Create Terraform Plan Summary
+      env:
+        ENVIRONMENT: ${{ inputs.environment || 'staging' }}
       run: |
         cd terraform
-        echo "## Terraform Plan Summary (Staging) - Layered Architecture" >> $GITHUB_STEP_SUMMARY
+        echo "## Terraform Plan Summary (${ENVIRONMENT^}) - Layered Architecture" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "✅ All layers validated and planned successfully" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Processing Configuration:" >> $GITHUB_STEP_SUMMARY
+        echo "- Environment: ${ENVIRONMENT}" >> $GITHUB_STEP_SUMMARY
         echo "- Last layer: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Available Layers:" >> $GITHUB_STEP_SUMMARY
@@ -274,26 +279,98 @@ jobs:
       uses: actions/github-script@v7
       env:
         PLAN: "terraform\n${{ steps.tf-plan.outputs.stdout }}"
+        ENVIRONMENT: ${{ inputs.environment || 'staging' }}
       with:
         script: |
-          const output = `#### Terraform Plan (Staging) 📖\`${{ steps.tf-plan.outcome }}\`
-          
-          <details><summary>Show Plan (Staging)</summary>
-          
+          const output = `#### Terraform Plan (${process.env.ENVIRONMENT}) 📖\`${{ steps.tf-plan.outcome }}\`
+
+          <details><summary>Show Plan (${process.env.ENVIRONMENT})</summary>
+
           \`\`\`\n
           ${process.env.PLAN}
           \`\`\`
-          
+
           </details>
-          
+
           *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
-          
+
           github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
             repo: context.repo.repo,
             body: output
           })
+
+  terraform-plan-destroy:
+    name: Terraform Plan Destroy
+    runs-on: ubuntu-latest
+    needs: terraform-validate
+    if: inputs.action == 'destroy'
+    environment: ${{ inputs.environment }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    outputs:
+      tfplanExitCode: ${{ steps.tf-plan-destroy.outputs.exitcode }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        # AWS Role Trusts GitHub OIDC identity provider
+        role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
+        role-session-name: GitHubActions-Terraform-Plan-Destroy
+        aws-region: ${{ env.AWS_REGION }}
+        # Explicit OIDC configuration
+        audience: sts.amazonaws.com
+        output-env-credentials: true
+
+    - name: Terraform Plan Destroy - Layered Architecture
+      id: tf-plan-destroy
+      env:
+        LAST_LAYER: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
+      run: |
+        cd terraform
+        # Plan destruction in reverse layer order
+        chmod +x ci/deploy-layers.sh
+        echo "Planning destruction for ${{ inputs.environment }} environment..."
+        export exitcode=0
+        ./ci/deploy-layers.sh ${{ inputs.environment }}.tfvars plan $LAST_LAYER || export exitcode=$?
+
+        echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
+
+        if [ $exitcode -eq 1 ]; then
+          echo "Terraform Plan Destroy Failed"
+          exit 1
+        elif [ $exitcode -eq 0 ]; then
+          echo "Terraform Plan Destroy Succeeded"
+        else
+          echo "Terraform Plan Destroy Completed with exit code: $exitcode"
+        fi
+
+    - name: Create Terraform Plan Destroy Summary
+      run: |
+        cd terraform
+        echo "## Terraform Plan Destroy Summary (${{ inputs.environment }}) - Layered Architecture" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "⚠️ Destruction plan completed successfully" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Processing Configuration:" >> $GITHUB_STEP_SUMMARY
+        echo "- Environment: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Last layer to destroy: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Destruction Scope:" >> $GITHUB_STEP_SUMMARY
+        echo "Layers ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }} through 5 will be destroyed in reverse order" >> $GITHUB_STEP_SUMMARY
 
   #  terraform-plan-production:
   #    name: Terraform Plan (Production)
@@ -371,12 +448,12 @@ jobs:
   #        head -100 tfplan-production.txt >> $GITHUB_STEP_SUMMARY
   #        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
   #
-  terraform-apply-staging:
-    name: Terraform Apply (Staging)
+  terraform-apply:
+    name: Terraform Apply
     runs-on: ubuntu-latest
-    needs: terraform-plan-staging
-    if: needs.terraform-plan-staging.outputs.tfplanExitCode == 0 && (github.ref == 'refs/heads/develop' || inputs.action == 'apply')
-    environment: staging
+    needs: terraform-plan
+    if: needs.terraform-plan.outputs.tfplanExitCode == 0 && inputs.action == 'apply'
+    environment: ${{ inputs.environment }}
 
     permissions:
       id-token: write
@@ -405,20 +482,24 @@ jobs:
     - name: Terraform Apply - Layered Architecture
       env:
         LAST_LAYER: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
+        ENVIRONMENT: ${{ inputs.environment }}
       run: |
         cd terraform
         # Use the layered deployment script for applying
         chmod +x ci/deploy-layers.sh
-        ./ci/deploy-layers.sh staging.tfvars apply $LAST_LAYER
+        ./ci/deploy-layers.sh ${ENVIRONMENT}.tfvars apply $LAST_LAYER
 
     - name: Terraform Output - Layered Architecture
+      env:
+        ENVIRONMENT: ${{ inputs.environment }}
       run: |
         cd terraform
-        echo "## Terraform Apply Results (Staging) - Layered Architecture" >> $GITHUB_STEP_SUMMARY
+        echo "## Terraform Apply Results (${ENVIRONMENT^}) - Layered Architecture" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "🚀 Infrastructure successfully applied to staging environment" >> $GITHUB_STEP_SUMMARY
+        echo "🚀 Infrastructure successfully applied to ${ENVIRONMENT} environment" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Configuration:" >> $GITHUB_STEP_SUMMARY
+        echo "- Environment: ${ENVIRONMENT}" >> $GITHUB_STEP_SUMMARY
         echo "- Last layer processed: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Layer Status:" >> $GITHUB_STEP_SUMMARY
@@ -430,15 +511,17 @@ jobs:
         [[ $LAST_LAYER -ge 5 ]] && echo "✅ Layer 5: Monitoring (CloudWatch)" >> $GITHUB_STEP_SUMMARY || true
 
     - name: Export Combined Terraform Outputs
+      env:
+        ENVIRONMENT: ${{ inputs.environment }}
       run: |
         cd terraform
         # Export outputs from all layers into a combined JSON
-        echo '{}' > combined-outputs-staging.json
+        echo '{}' > combined-outputs-${ENVIRONMENT}.json
         for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
           echo "Collecting outputs from layer: $layer"
           if [ -f "$layer/terraform.tfstate" ]; then
             cd $layer
-            terraform output -json >> ../combined-outputs-staging.json || echo "No outputs from $layer"
+            terraform output -json >> ../combined-outputs-${ENVIRONMENT}.json || echo "No outputs from $layer"
             cd ..
           fi
         done
@@ -446,8 +529,8 @@ jobs:
     - name: Upload Combined Terraform Outputs
       uses: actions/upload-artifact@v4
       with:
-        name: terraform-outputs-staging-layered
-        path: terraform/combined-outputs-staging.json
+        name: terraform-outputs-${{ inputs.environment }}-layered
+        path: terraform/combined-outputs-${{ inputs.environment }}.json
 
   # FIXME
   #    - name: Notify Staging Deployment
@@ -548,14 +631,16 @@ jobs:
   terraform-destroy:
     name: Terraform Destroy
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+    needs: terraform-plan-destroy
+    if: needs.terraform-plan-destroy.outputs.tfplanExitCode == 0 && inputs.action == 'destroy'
     environment: ${{ inputs.environment }}
 
     permissions:
       id-token: write
       contents: read
       issues: write  # Required for manual approval
-    
+      repository-projects: read  # Required for collaborator access
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -576,37 +661,20 @@ jobs:
         audience: sts.amazonaws.com
         output-env-credentials: true
 
-    - name: Terraform Destroy Plan - Layered Architecture
+    - name: Wait for Manual Approval
       run: |
-        cd terraform
-        # Plan destruction in reverse layer order
-        chmod +x ci/deploy-layers.sh
-        echo "Planning destruction of all layers..."
-        ./ci/deploy-layers.sh ${{ inputs.environment }}.tfvars plan
-
-    - name: Manual Approval for Destroy
-      uses: trstringer/manual-approval@v1
-      with:
-        secret: ${{ github.token }}
-        approvers: pmcgee
-        minimum-approvals: 1
-        issue-title: "Terraform Destroy Approval Required - ${{ inputs.environment }}"
-        issue-body: |
-          ⚠️ **DESTRUCTIVE ACTION** ⚠️
-
-          Someone has requested to destroy infrastructure in the **${{ inputs.environment }}** environment.
-
-          **Environment**: ${{ inputs.environment }}
-          **Last Layer**: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
-          **Requested by**: ${{ github.actor }}
-          **Workflow**: ${{ github.workflow }}
-          **Repository**: ${{ github.repository }}
-
-          **Destroy Scope**: Layers ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }} through 5 will be destroyed in reverse order.
-
-          Please review the destroy plan carefully before approving.
-
-          To approve, comment on this issue with: **approve**
+        echo "🚨 DESTRUCTIVE ACTION REQUESTED 🚨"
+        echo ""
+        echo "Someone has requested to destroy infrastructure in the ${{ inputs.environment }} environment."
+        echo ""
+        echo "Environment: ${{ inputs.environment }}"
+        echo "Last Layer: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}"
+        echo "Requested by: ${{ github.actor }}"
+        echo "Destroy Scope: Layers ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }} through 5 will be destroyed in reverse order"
+        echo ""
+        echo "⚠️  This job will wait for manual approval from repository administrators."
+        echo "📧 Configured reviewers will receive email notifications."
+        echo "✅ Click 'Review deployments' button above to approve or reject."
 
     - name: Terraform Destroy - Layered Architecture
       env:
