@@ -556,6 +556,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      issues: write  # Required for manual approval
     
     steps:
     - name: Checkout code
@@ -588,7 +589,7 @@ jobs:
     - name: Manual Approval for Destroy
       uses: trstringer/manual-approval@v1
       with:
-        secret: ${{ github.TOKEN }}
+        secret: ${{ github.token }}
         approvers: ${{ secrets.DESTROY_APPROVERS }}
         minimum-approvals: 2
         issue-title: "Terraform Destroy Approval Required"

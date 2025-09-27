@@ -50,6 +50,14 @@ resource "aws_db_parameter_group" "postgres" {
 resource "random_password" "rds_password" {
   length  = 16
   special = true
+
+  # Exclude characters not allowed by RDS: /, @, ", space
+  override_special = "!#$%&*+-=?^_`{|}~"
+
+  # Force regeneration with new character set
+  keepers = {
+    version = "2"
+  }
 }
 
 # PostGIS Extension Installation Strategy
@@ -182,11 +190,22 @@ resource "aws_iam_role_policy_attachment" "rds_enhanced_monitoring" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
 
+# Generate a unique suffix for secret naming to avoid deletion conflicts
+resource "random_id" "secret_suffix" {
+  count       = var.enable_secrets_manager ? 1 : 0
+  byte_length = 4
+
+  keepers = {
+    # Force regeneration when RDS instance changes
+    rds_identifier = "${var.project_name}-${var.environment}-postgres"
+  }
+}
+
 # Secrets Manager secret for secure database credential storage
 resource "aws_secretsmanager_secret" "rds_credentials" {
   count = var.enable_secrets_manager ? 1 : 0
 
-  name        = "${var.project_name}-${var.environment}-rds-credentials"
+  name        = "${var.project_name}-${var.environment}-rds-credentials-${random_id.secret_suffix[0].hex}"
   description = "RDS credentials for ${var.project_name} PostgreSQL database"
 
   tags = merge(var.additional_tags, {

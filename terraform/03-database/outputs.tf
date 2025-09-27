@@ -49,8 +49,14 @@ output "rds_credentials_secret_arn" {
 }
 
 output "rds_credentials_secret_name" {
-  description = "Name of the RDS credentials secret in Secrets Manager"
+  description = "Name of the RDS credentials secret in Secrets Manager (dynamically generated)"
   value       = var.enable_secrets_manager ? aws_secretsmanager_secret.rds_credentials[0].name : null
+}
+
+output "rds_credentials_secret_id" {
+  description = "ID of the RDS credentials secret in Secrets Manager (for applications)"
+  value       = var.enable_secrets_manager ? aws_secretsmanager_secret.rds_credentials[0].id : null
+  sensitive   = true
 }
 
 # Database Subnet Group
@@ -81,6 +87,7 @@ output "postgis_installation_guide" {
 
     DATABASE CREDENTIALS:
     - Secrets Manager: ${var.enable_secrets_manager ? aws_secretsmanager_secret.rds_credentials[0].name : "secrets-manager-disabled"}
+    - Secret ARN: ${var.enable_secrets_manager ? aws_secretsmanager_secret.rds_credentials[0].arn : "N/A"}
     - RDS Endpoint: ${aws_db_instance.main.endpoint}
     - Database Name: ${aws_db_instance.main.db_name}
 
