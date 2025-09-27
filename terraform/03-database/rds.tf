@@ -15,8 +15,10 @@ resource "aws_db_parameter_group" "postgres" {
 
   # PostgreSQL configuration optimized for astronomical data
   parameter {
-    name  = "shared_preload_libraries"
-    value = "pg_stat_statements,postgis"
+    name = "shared_preload_libraries"
+    # Note postgis is not a valid shared_preload_libraries
+    # After database creation run SQL: CREATE EXTENSION postgis; to install
+    value = "pg_stat_statements"
   }
 
   parameter {
@@ -48,7 +50,39 @@ resource "aws_db_parameter_group" "postgres" {
 resource "random_password" "rds_password" {
   length  = 16
   special = true
+
+  # Exclude characters not allowed by RDS: /, @, ", space
+  override_special = "!#$%&*+-=?^_`{|}~"
+
+  # Force regeneration with new character set
+  keepers = {
+    version = "2"
+  }
 }
+
+# PostGIS Extension Installation Strategy
+# =====================================
+#
+# PROBLEM: PostgreSQL RDS requires PostGIS spatial extension for astronomical data processing.
+# Initial attempts used complex infrastructure approaches:
+# - Lambda functions (failed: psycopg2 import errors, VPC networking complexity)
+# - ECS Fargate tasks (failed: container image compatibility, AWS CLI vs PostgreSQL client conflicts)
+#
+# SOLUTION: Application-level installation during database initialization.
+# AWS RDS PostgreSQL supports PostGIS via simple SQL: CREATE EXTENSION IF NOT EXISTS postgis;
+#
+# IMPLEMENTATION: Applications should execute PostGIS installation on startup:
+# - Spring Boot: @EventListener(ApplicationReadyEvent.class) with jdbcTemplate.execute()
+# - Python: psycopg2 connection with cursor.execute()
+# - Node.js: pg client with await client.query()
+#
+# BENEFITS:
+# - Simple and reliable (follows AWS documentation best practices)
+# - No additional infrastructure required (zero cost, zero maintenance)
+# - Idempotent (safe to run multiple times)
+# - Application owns its dependencies (proper separation of concerns)
+#
+# REFERENCE: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Appendix.PostgreSQL.CommonDBATasks.PostGIS.html
 
 # PostgreSQL RDS instance for astronomical catalog and metadata storage
 resource "aws_db_instance" "main" {
@@ -104,6 +138,15 @@ resource "aws_db_instance" "main" {
   ]
 }
 
+# PostGIS extension will be available in RDS PostgreSQL
+# Note: PostGIS extension can be installed manually after deployment using:
+# CREATE EXTENSION IF NOT EXISTS postgis;
+#
+# For automated installation, the application should handle this on first startup
+# since the database is in private subnets and not accessible from local terraform
+
+# Lambda function to install PostGIS extension via AWS RDS Data API (future enhancement)
+# This would require enabling RDS Data API which has additional costs
 # CloudWatch log group for PostgreSQL database logs with KMS encryption
 resource "aws_cloudwatch_log_group" "rds" {
   name              = "/aws/rds/instance/${var.project_name}-${var.environment}-postgres/postgresql"
@@ -147,11 +190,22 @@ resource "aws_iam_role_policy_attachment" "rds_enhanced_monitoring" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
 
+# Generate a unique suffix for secret naming to avoid deletion conflicts
+resource "random_id" "secret_suffix" {
+  count       = var.enable_secrets_manager ? 1 : 0
+  byte_length = 4
+
+  keepers = {
+    # Force regeneration when RDS instance changes
+    rds_identifier = "${var.project_name}-${var.environment}-postgres"
+  }
+}
+
 # Secrets Manager secret for secure database credential storage
 resource "aws_secretsmanager_secret" "rds_credentials" {
   count = var.enable_secrets_manager ? 1 : 0
 
-  name        = "${var.project_name}-${var.environment}-rds-credentials"
+  name        = "${var.project_name}-${var.environment}-rds-credentials-${random_id.secret_suffix[0].hex}"
   description = "RDS credentials for ${var.project_name} PostgreSQL database"
 
   tags = merge(var.additional_tags, {

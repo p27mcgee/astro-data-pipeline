@@ -7,13 +7,6 @@ on:
       - 'application/**'
       - 'kubernetes/**'
       - '.github/workflows/**'
-  workflow_dispatch:
-    inputs:
-      skip_tests:
-        description: 'Skip test execution'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -27,7 +20,7 @@ jobs:
 
     services:
       postgres:
-        image: postgis/postgis:15-3.3
+        image: postgis/postgis:15-3.5
         env:
           POSTGRES_DB: astro_test
           POSTGRES_USER: test_user

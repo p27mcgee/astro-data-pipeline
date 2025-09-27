@@ -49,8 +49,14 @@ output "rds_credentials_secret_arn" {
 }
 
 output "rds_credentials_secret_name" {
-  description = "Name of the RDS credentials secret in Secrets Manager"
+  description = "Name of the RDS credentials secret in Secrets Manager (dynamically generated)"
   value       = var.enable_secrets_manager ? aws_secretsmanager_secret.rds_credentials[0].name : null
+}
+
+output "rds_credentials_secret_id" {
+  description = "ID of the RDS credentials secret in Secrets Manager (for applications)"
+  value       = var.enable_secrets_manager ? aws_secretsmanager_secret.rds_credentials[0].id : null
+  sensitive   = true
 }
 
 # Database Subnet Group
@@ -68,4 +74,54 @@ output "db_subnet_group_arn" {
 output "db_parameter_group_name" {
   description = "Name of the database parameter group"
   value       = aws_db_parameter_group.postgres.name
+}
+
+# PostGIS Extension Installation Instructions
+output "postgis_installation_guide" {
+  description = "PostGIS extension installation guide for application developers"
+  value       = <<-EOT
+    PostGIS Extension: APPLICATION-LEVEL INSTALLATION REQUIRED
+
+    The PostgreSQL database is ready and PostGIS-compatible, but PostGIS extension
+    installation is handled by the application layer for simplicity and reliability.
+
+    DATABASE CREDENTIALS:
+    - Secrets Manager: ${var.enable_secrets_manager ? aws_secretsmanager_secret.rds_credentials[0].name : "secrets-manager-disabled"}
+    - Secret ARN: ${var.enable_secrets_manager ? aws_secretsmanager_secret.rds_credentials[0].arn : "N/A"}
+    - RDS Endpoint: ${aws_db_instance.main.endpoint}
+    - Database Name: ${aws_db_instance.main.db_name}
+
+    APPLICATION IMPLEMENTATION:
+    Add PostGIS installation to your application's database initialization code:
+
+    Java (Spring Boot):
+    @EventListener(ApplicationReadyEvent.class)
+    public void initializeDatabase() {
+        jdbcTemplate.execute("CREATE EXTENSION IF NOT EXISTS postgis;");
+        jdbcTemplate.execute("CREATE EXTENSION IF NOT EXISTS postgis_topology;");
+        log.info("PostGIS extension installed successfully");
+    }
+
+    Python (Django/Flask):
+    def initialize_postgis():
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS postgis_topology;")
+        connection.commit()
+
+    Node.js:
+    async function initializePostGIS(client) {
+        await client.query('CREATE EXTENSION IF NOT EXISTS postgis;');
+        await client.query('CREATE EXTENSION IF NOT EXISTS postgis_topology;');
+        console.log('PostGIS extension installed successfully');
+    }
+
+    BENEFITS:
+    - Simple and reliable (follows AWS RDS documentation)
+    - No additional infrastructure required
+    - Idempotent (safe to run multiple times)
+    - Application owns its dependencies
+
+    REFERENCE: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Appendix.PostgreSQL.CommonDBATasks.PostGIS.html
+  EOT
 }
