@@ -56,6 +56,17 @@ variable "s3_buckets" {
         expiration = { days = 30 }
       }]
     }
+    intermediate-data = {
+      versioning_enabled = true # Enable versioning for experiment tracking
+      lifecycle_rules = [{
+        id     = "research_intermediate_cleanup"
+        status = "Enabled"
+        transitions = [
+          { days = 1, storage_class = "STANDARD_IA" } # Quick transition for cost optimization
+        ]
+        expiration = { days = 7 } # Aggressive cleanup for temporary research data
+      }]
+    }
     archive = {
       versioning_enabled = false
       lifecycle_rules = [{
