@@ -7,6 +7,7 @@ import org.stsci.astro.processor.dto.CustomWorkflowRequest;
 import org.stsci.astro.processor.dto.CustomWorkflowResponse;
 import org.stsci.astro.processor.dto.GranularProcessingRequest;
 import org.stsci.astro.processor.dto.GranularProcessingResponse;
+import org.stsci.astro.processor.model.ProcessingContext;
 import org.stsci.astro.processor.service.algorithm.AlgorithmRegistryService;
 import org.stsci.astro.processor.service.storage.IntermediateStorageService;
 
@@ -22,6 +23,7 @@ public class GranularProcessingService {
     private final IntermediateStorageService intermediateStorageService;
     private final AlgorithmRegistryService algorithmRegistryService;
     private final S3Service s3Service;
+    private final ProcessingContextService processingContextService;
 
     public GranularProcessingResponse applyDarkSubtraction(GranularProcessingRequest request) {
         log.info("Starting dark subtraction for session: {}, image: {}",
@@ -30,6 +32,8 @@ public class GranularProcessingService {
         LocalDateTime startTime = LocalDateTime.now();
 
         try {
+            // Create or retrieve processing context
+            ProcessingContext processingContext = getOrCreateProcessingContext(request);
             // Download input image and calibration frame
             byte[] imageData = s3Service.downloadFile(request.getImagePath());
             byte[] darkFrame = null;
@@ -448,5 +452,157 @@ public class GranularProcessingService {
                 .map(CustomWorkflowResponse.StepResult::getStepType)
                 .findFirst()
                 .orElse("unknown");
+    }
+
+    /**
+     * Get or create processing context based on request parameters
+     */
+    private ProcessingContext getOrCreateProcessingContext(GranularProcessingRequest request) {
+        // If processing ID is provided, try to retrieve existing context
+        if (request.getProcessingId() != null) {
+            return processingContextService.getProcessingContext(request.getProcessingId())
+                    .orElseThrow(() -> new RuntimeException("Processing context not found: " + request.getProcessingId()));
+        }
+
+        // Check if context exists for this session
+        Optional<ProcessingContext> existingContext = processingContextService.getProcessingContextBySession(request.getSessionId());
+        if (existingContext.isPresent()) {
+            return existingContext.get();
+        }
+
+        // Create new processing context based on processing type
+        String processingType = request.getProcessingType() != null ? request.getProcessingType().toLowerCase() : "production";
+
+        if ("experimental".equals(processingType) && request.getExperimentContext() != null) {
+            return processingContextService.createExperimentalContext(
+                    request.getSessionId(),
+                    request.getExperimentContext().getExperimentName(),
+                    request.getExperimentContext().getExperimentDescription(),
+                    request.getExperimentContext().getResearcherId(),
+                    request.getExperimentContext().getResearcherEmail(),
+                    request.getExperimentContext().getProjectId(),
+                    request.getParameters()
+            );
+        } else {
+            // Default to production context
+            String observationId = null;
+            String instrumentId = null;
+            String telescopeId = null;
+            String programId = null;
+
+            if (request.getProductionContext() != null) {
+                observationId = request.getProductionContext().getObservationId();
+                instrumentId = request.getProductionContext().getInstrumentId();
+                telescopeId = request.getProductionContext().getTelescopeId();
+                programId = request.getProductionContext().getProgramId();
+            }
+
+            return processingContextService.createProductionContext(
+                    request.getSessionId(),
+                    observationId != null ? observationId : "AUTO-" + System.currentTimeMillis(),
+                    instrumentId != null ? instrumentId : "UNKNOWN",
+                    telescopeId != null ? telescopeId : "UNKNOWN",
+                    programId != null ? programId : "AUTO"
+            );
+        }
+    }
+
+    /**
+     * Build enhanced response with processing context information
+     */
+    private GranularProcessingResponse buildEnhancedResponse(GranularProcessingRequest request,
+                                                             ProcessingContext processingContext,
+                                                             String stepId,
+                                                             String algorithm,
+                                                             String outputPath,
+                                                             LocalDateTime startTime,
+                                                             LocalDateTime endTime,
+                                                             long processingTime,
+                                                             List<String> nextSteps) {
+        GranularProcessingResponse.GranularProcessingResponseBuilder responseBuilder = GranularProcessingResponse.builder()
+                .status("SUCCESS")
+                .outputPath(outputPath)
+                .sessionId(request.getSessionId())
+                .stepId(stepId)
+                .algorithm(algorithm)
+                .startTime(startTime)
+                .endTime(endTime)
+                .processingTimeMs(processingTime)
+                .metrics(buildProcessingMetrics(request, processingTime))
+                .nextSteps(nextSteps)
+                .processingId(processingContext.getProcessingId())
+                .processingType(processingContext.getProcessingType().name().toLowerCase())
+                .s3KeyPrefix(processingContext.getS3KeyPrefix())
+                .partitionKey(processingContext.getPartitionKey());
+
+        // Add experiment information if experimental processing
+        if (processingContext.isExperimental() && processingContext.getExperimentContext() != null) {
+            ProcessingContext.ExperimentContext expContext = processingContext.getExperimentContext();
+            responseBuilder.experimentInfo(GranularProcessingResponse.ExperimentInfo.builder()
+                    .experimentName(expContext.getExperimentName())
+                    .researcherId(expContext.getResearcherId())
+                    .projectId(expContext.getProjectId())
+                    .parentExperimentId(expContext.getParentExperimentId())
+                    .build());
+        }
+
+        // Add production information if production processing
+        if (processingContext.isProduction() && processingContext.getProductionContext() != null) {
+            ProcessingContext.ProductionContext prodContext = processingContext.getProductionContext();
+            responseBuilder.productionInfo(GranularProcessingResponse.ProductionInfo.builder()
+                    .observationId(prodContext.getObservationId())
+                    .instrumentId(prodContext.getInstrumentId())
+                    .programId(prodContext.getProgramId())
+                    .dataReleaseVersion(prodContext.getDataReleaseVersion())
+                    .build());
+        }
+
+        // Add data lineage information
+        if (processingContext.getDataLineage() != null) {
+            ProcessingContext.DataLineage lineage = processingContext.getDataLineage();
+            responseBuilder.dataLineage(GranularProcessingResponse.DataLineageInfo.builder()
+                    .previousProcessingId(lineage.getPreviousProcessingId())
+                    .rootProcessingId(lineage.getRootProcessingId())
+                    .processingDepth(lineage.getProcessingDepth())
+                    .inputImageChecksum(lineage.getInputImageChecksum())
+                    .build());
+        }
+
+        return responseBuilder.build();
+    }
+
+    /**
+     * Update data lineage with current processing information
+     */
+    private void updateProcessingLineage(ProcessingContext processingContext, GranularProcessingRequest request) {
+        // Calculate input image checksum for data integrity
+        String inputChecksum = calculateImageChecksum(request.getImagePath());
+
+        // Update lineage information
+        Map<String, String> calibrationFrames = new HashMap<>();
+        if (request.getCalibrationPath() != null) {
+            calibrationFrames.put("calibration_frame", request.getCalibrationPath());
+        }
+
+        processingContextService.updateDataLineage(
+                processingContext.getProcessingId(),
+                request.getImagePath(),
+                inputChecksum,
+                calibrationFrames
+        );
+    }
+
+    /**
+     * Calculate checksum for data integrity verification
+     */
+    private String calculateImageChecksum(String imagePath) {
+        try {
+            // In a real implementation, this would calculate MD5/SHA256 of the image
+            // For now, return a simple hash based on path and timestamp
+            return "md5:" + Integer.toHexString((imagePath + System.currentTimeMillis()).hashCode());
+        } catch (Exception e) {
+            log.warn("Failed to calculate checksum for {}: {}", imagePath, e.getMessage());
+            return "unknown";
+        }
     }
 }

@@ -72,4 +72,93 @@ public class GranularProcessingResponse {
     @Schema(description = "Compatible with next processing steps")
     @JsonProperty("nextSteps")
     private java.util.List<String> nextSteps;
+
+    @Schema(description = "Processing context ID for tracking production vs experimental processing",
+            example = "exp-20240928-a1b2c3d4-5e6f-7890-abcd-ef1234567890")
+    @JsonProperty("processingId")
+    private String processingId;
+
+    @Schema(description = "Processing type: production, experimental, test",
+            example = "experimental")
+    @JsonProperty("processingType")
+    private String processingType;
+
+    @Schema(description = "S3 key prefix for organizing results by processing context",
+            example = "experimental/cosmic-ray-comparison/2024-09-28/exp-20240928-a1b2c3d4")
+    @JsonProperty("s3KeyPrefix")
+    private String s3KeyPrefix;
+
+    @Schema(description = "Database partition key for efficient querying",
+            example = "exp_202409")
+    @JsonProperty("partitionKey")
+    private String partitionKey;
+
+    @Schema(description = "Experiment context for experimental processing")
+    @JsonProperty("experimentContext")
+    private ExperimentInfo experimentInfo;
+
+    @Schema(description = "Production context for production processing")
+    @JsonProperty("productionContext")
+    private ProductionInfo productionInfo;
+
+    @Schema(description = "Data lineage information")
+    @JsonProperty("dataLineage")
+    private DataLineageInfo dataLineage;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "Experiment information for research processing")
+    public static class ExperimentInfo {
+        @Schema(description = "Name of the experiment")
+        private String experimentName;
+
+        @Schema(description = "Researcher ID")
+        private String researcherId;
+
+        @Schema(description = "Project ID")
+        private String projectId;
+
+        @Schema(description = "Parent experiment ID for follow-up experiments")
+        private String parentExperimentId;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "Production information for operational processing")
+    public static class ProductionInfo {
+        @Schema(description = "Observation ID")
+        private String observationId;
+
+        @Schema(description = "Instrument ID")
+        private String instrumentId;
+
+        @Schema(description = "Program ID")
+        private String programId;
+
+        @Schema(description = "Data release version")
+        private String dataReleaseVersion;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "Data lineage tracking information")
+    public static class DataLineageInfo {
+        @Schema(description = "Previous processing ID in the chain")
+        private String previousProcessingId;
+
+        @Schema(description = "Root processing ID (original processing)")
+        private String rootProcessingId;
+
+        @Schema(description = "Processing depth (number of steps from original)")
+        private Integer processingDepth;
+
+        @Schema(description = "Input image checksum for verification")
+        private String inputImageChecksum;
+    }
 }

@@ -54,4 +54,78 @@ public class GranularProcessingRequest {
     @Schema(description = "Enable detailed processing metrics", defaultValue = "false")
     @JsonProperty("enableMetrics")
     private Boolean enableMetrics = false;
+
+    @Schema(description = "Processing context ID for tracking production vs experimental processing",
+            example = "exp-20240928-a1b2c3d4-5e6f-7890-abcd-ef1234567890")
+    @JsonProperty("processingId")
+    private String processingId;
+
+    @Schema(description = "Processing type: production, experimental, test",
+            example = "experimental", defaultValue = "production")
+    @JsonProperty("processingType")
+    private String processingType = "production";
+
+    @Schema(description = "Experiment information for experimental processing")
+    @JsonProperty("experimentContext")
+    private ExperimentContext experimentContext;
+
+    @Schema(description = "Production information for production processing")
+    @JsonProperty("productionContext")
+    private ProductionContext productionContext;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "Experiment context for research processing")
+    public static class ExperimentContext {
+        @Schema(description = "Name of the experiment", example = "cosmic-ray-algorithm-comparison")
+        private String experimentName;
+
+        @Schema(description = "Description of the experiment")
+        private String experimentDescription;
+
+        @Schema(description = "Researcher ID", example = "astronomer123")
+        private String researcherId;
+
+        @Schema(description = "Researcher email", example = "astronomer@stsci.edu")
+        private String researcherEmail;
+
+        @Schema(description = "Project ID", example = "PROJ-001")
+        private String projectId;
+
+        @Schema(description = "Research hypothesis")
+        private String hypothesis;
+
+        @Schema(description = "Parent experiment ID for follow-up experiments")
+        private String parentExperimentId;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Schema(description = "Production context for operational processing")
+    public static class ProductionContext {
+        @Schema(description = "Observation ID", example = "OBS-2024-001")
+        private String observationId;
+
+        @Schema(description = "Instrument ID", example = "WFC3")
+        private String instrumentId;
+
+        @Schema(description = "Telescope ID", example = "HST")
+        private String telescopeId;
+
+        @Schema(description = "Program ID", example = "GO-12345")
+        private String programId;
+
+        @Schema(description = "Proposal ID", example = "PROP-001")
+        private String proposalId;
+
+        @Schema(description = "Processing priority", example = "1")
+        private Integer priority;
+
+        @Schema(description = "Data release version", example = "DR1")
+        private String dataReleaseVersion;
+    }
 }

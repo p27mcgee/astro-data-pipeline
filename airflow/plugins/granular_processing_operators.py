@@ -56,6 +56,15 @@ class GranularProcessingOperator(BaseOperator):
         timeout: int = 300,
         retries: int = 1,
         retry_delay: timedelta = timedelta(minutes=3),
+        # Processing context parameters
+        processing_id: Optional[str] = None,
+        processing_type: str = 'production',
+        experiment_name: Optional[str] = None,
+        researcher_id: Optional[str] = None,
+        researcher_email: Optional[str] = None,
+        project_id: Optional[str] = None,
+        observation_id: Optional[str] = None,
+        instrument_id: Optional[str] = None,
         **kwargs
     ) -> None:
         super().__init__(**kwargs)
@@ -69,6 +78,16 @@ class GranularProcessingOperator(BaseOperator):
         self.preserve_metadata = preserve_metadata
         self.enable_metrics = enable_metrics
         self.timeout = timeout
+
+        # Processing context attributes
+        self.processing_id = processing_id
+        self.processing_type = processing_type
+        self.experiment_name = experiment_name
+        self.researcher_id = researcher_id
+        self.researcher_email = researcher_email
+        self.project_id = project_id
+        self.observation_id = observation_id
+        self.instrument_id = instrument_id
 
         # Get base URL from Airflow Variables
         self.base_url = Variable.get(
@@ -84,7 +103,8 @@ class GranularProcessingOperator(BaseOperator):
             'algorithm': self.algorithm,
             'parameters': self.parameters,
             'preserveMetadata': self.preserve_metadata,
-            'enableMetrics': self.enable_metrics
+            'enableMetrics': self.enable_metrics,
+            'processingType': self.processing_type
         }
 
         if self.calibration_path:
@@ -95,6 +115,35 @@ class GranularProcessingOperator(BaseOperator):
 
         if self.output_path:
             payload['outputPath'] = self.output_path
+
+        if self.processing_id:
+            payload['processingId'] = self.processing_id
+
+        # Add experiment context for experimental processing
+        if self.processing_type == 'experimental':
+            experiment_context = {}
+            if self.experiment_name:
+                experiment_context['experimentName'] = self.experiment_name
+            if self.researcher_id:
+                experiment_context['researcherId'] = self.researcher_id
+            if self.researcher_email:
+                experiment_context['researcherEmail'] = self.researcher_email
+            if self.project_id:
+                experiment_context['projectId'] = self.project_id
+
+            if experiment_context:
+                payload['experimentContext'] = experiment_context
+
+        # Add production context for production processing
+        elif self.processing_type == 'production':
+            production_context = {}
+            if self.observation_id:
+                production_context['observationId'] = self.observation_id
+            if self.instrument_id:
+                production_context['instrumentId'] = self.instrument_id
+
+            if production_context:
+                payload['productionContext'] = production_context
 
         return payload
 
