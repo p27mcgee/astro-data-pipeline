@@ -31,6 +31,429 @@ This project implements an astronomical data processing system that:
 Raw FITS Files → Dark Subtraction → Flat Correction → Cosmic Ray Removal → Image Stacking → Catalog Generation
 ```
 
+### 🆔 Processing ID System & Data Segregation
+
+This system implements a comprehensive **processing ID architecture** that enables:
+
+- **Production vs Experimental Data Segregation**
+- **Database Partitioning for Efficient Querying**
+- **S3 Organization by Processing Context**
+- **Research Experiment Tracking and Lineage**
+
+#### Processing ID Schema
+
+All processing operations are assigned a unique processing ID with the format:
+
+```
+{type}-{timestamp}-{uuid}
+```
+
+**Examples:**
+
+- `prod-20240928-14a7f2b3-8c45-4d12-9f3e-abc123def456` (Production)
+- `exp-20240928-67d8e9f1-2a34-4b56-8c90-def456abc123` (Experimental)
+- `test-20240928-89ab123c-4d56-7e89-0f12-345678901234` (Testing)
+
+#### Processing Types
+
+| Type             | Prefix | Description                 | Use Case                                   |
+|------------------|--------|-----------------------------|--------------------------------------------|
+| **Production**   | `prod` | Operational data processing | Standard telescope data reduction          |
+| **Experimental** | `exp`  | Research processing         | Algorithm testing, parameter optimization  |
+| **Test**         | `test` | Development testing         | CI/CD, integration testing                 |
+| **Validation**   | `val`  | Quality validation          | Data quality assessment                    |
+| **Reprocessing** | `repr` | Historical reprocessing     | Batch reprocessing with updated algorithms |
+
+#### Data Segregation Architecture
+
+**Database Partitioning:**
+
+```sql
+-- Partition key format: {type}_{YYYYMM}
+partition_key VARCHAR(50) GENERATED ALWAYS AS (
+    processing_type || '_' || to_char(created_at, 'YYYYMM')
+) STORED
+
+-- Examples: prod_202409, exp_202409, test_202409
+```
+
+**S3 Organization:**
+
+```
+s3://astro-processed-data/
+├── production/{date}/{processing-id}/
+│   ├── processed_image.fits
+│   ├── catalog.csv
+│   └── quality_metrics.json
+├── experimental/{experiment-name}/{date}/{processing-id}/
+│   ├── algorithm_test_results.fits
+│   ├── comparison_metrics.json
+│   └── research_notes.md
+└── test/{date}/{processing-id}/
+    └── validation_results/
+```
+
+#### Production Processing Context
+
+For operational telescope data processing:
+
+```json
+{
+  "processingType": "production",
+  "productionContext": {
+    "observationId": "OBS-2024-001",
+    "instrumentId": "WFC3",
+    "telescopeId": "HST",
+    "programId": "GO-12345",
+    "priority": 1,
+    "dataReleaseVersion": "DR1"
+  }
+}
+```
+
+#### Experimental Processing Context
+
+For research and algorithm development:
+
+```json
+{
+  "processingType": "experimental",
+  "experimentContext": {
+    "experimentName": "Cosmic Ray Algorithm Comparison",
+    "experimentDescription": "Comparing L.A.Cosmic vs median filter",
+    "researcherId": "astronomer123",
+    "researcherEmail": "astronomer@stsci.edu",
+    "projectId": "PROJ-001",
+    "hypothesis": "L.A.Cosmic v2 provides better star preservation"
+  }
+}
+```
+
+#### Data Lineage Tracking
+
+The system tracks complete data lineage for derived processing:
+
+```json
+{
+  "dataLineage": {
+    "inputImagePath": "s3://raw-data/observation_001.fits",
+    "inputImageChecksum": "sha256:abc123...",
+    "previousProcessingId": "prod-20240928-parent-id",
+    "rootProcessingId": "prod-20240928-root-id",
+    "processingDepth": 2,
+    "calibrationFrames": {
+      "dark": "calibration/dark_master_20240928.fits",
+      "flat": "calibration/flat_master_20240928.fits"
+    }
+  }
+}
+```
+
+#### API Integration
+
+**Creating Production Context:**
+
+```bash
+curl -X POST "/api/v1/processing/steps/bias-subtract" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "imagePath": "s3://raw-data/observation.fits",
+    "sessionId": "production-session-001",
+    "processingType": "production",
+    "productionContext": {
+      "observationId": "OBS-2024-001",
+      "instrumentId": "WFC3",
+      "telescopeId": "HST"
+    }
+  }'
+```
+
+**Creating Experimental Context:**
+
+```bash
+curl -X POST "/api/v1/processing/steps/cosmic-ray-remove" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "imagePath": "s3://test-data/sample.fits",
+    "sessionId": "cosmic-ray-experiment-001",
+    "processingType": "experimental",
+    "algorithm": "lacosmic-v2",
+    "parameters": {"sigclip": 4.5, "starPreservation": true},
+    "experimentContext": {
+      "experimentName": "L.A.Cosmic Parameter Optimization",
+      "researcherId": "astronomer123",
+      "projectId": "PROJ-001"
+    }
+  }'
+```
+
+#### Database Views for Data Access
+
+**Production Data Only:**
+
+```sql
+SELECT * FROM production_astronomical_objects
+WHERE observation_id = 'OBS-2024-001';
+```
+
+**Experimental Data by Researcher:**
+
+```sql
+SELECT * FROM experimental_astronomical_objects
+WHERE processing_id IN (
+  SELECT processing_id FROM processing_contexts
+  WHERE researcher_id = 'astronomer123'
+);
+```
+
+**Recent Processing Results:**
+
+```sql
+SELECT * FROM recent_processing_results
+WHERE processing_type = 'experimental'
+AND created_at >= CURRENT_DATE - INTERVAL '7 days';
+```
+
+#### Airflow Integration
+
+The processing ID system is fully integrated with Airflow workflows:
+
+```python
+# Production processing
+production_task = BiasSubtractionOperator(
+    task_id='production_bias_subtract',
+    image_path='{{ params.input_image }}',
+    session_id='{{ ds }}-production',
+    processing_type='production',
+    observation_id='{{ params.observation_id }}',
+    instrument_id='{{ params.instrument_id }}'
+)
+
+# Experimental processing
+experiment_task = CosmicRayRemovalOperator(
+    task_id='experiment_cosmic_rays',
+    image_path='{{ params.test_image }}',
+    session_id='{{ ds }}-cosmic-ray-exp',
+    processing_type='experimental',
+    experiment_name='L.A.Cosmic Comparison',
+    researcher_id='{{ params.researcher_id }}',
+    algorithm='lacosmic-v2'
+)
+```
+
+### 🔄 Advanced Workflow Versioning & Management
+
+Building on the processing ID foundation, the system implements **comprehensive workflow versioning** that enables:
+
+#### Multi-Version Production Support
+
+**Multiple Active Workflows:**
+
+```bash
+# List active workflows
+curl -X GET "/api/v1/workflows/active?processingType=production"
+
+# Example response showing A/B testing
+[
+  {
+    "workflowName": "cosmic-ray-removal",
+    "workflowVersion": "v1.1",
+    "trafficSplitPercentage": 80.0,
+    "isDefault": true
+  },
+  {
+    "workflowName": "cosmic-ray-removal",
+    "workflowVersion": "v1.2",
+    "trafficSplitPercentage": 20.0,
+    "isDefault": false
+  }
+]
+```
+
+#### Experimental → Production Promotion
+
+**Seamless Workflow Promotion:**
+
+```bash
+# Promote experimental workflow to production
+curl -X POST "/api/v1/workflows/experimental/cosmic-ray-v2.1/promote" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "newProductionVersion": "v1.3",
+    "activatedBy": "astronomer123",
+    "reason": "15% improvement in star preservation",
+    "performanceMetrics": {
+      "starPreservation": 0.97,
+      "processingTime": 1800,
+      "qualityScore": 92.0
+    }
+  }'
+```
+
+#### Intelligent Workflow Selection
+
+**Traffic Splitting for A/B Testing:**
+
+```python
+# Airflow automatically selects workflow based on traffic split
+cosmic_ray_task = CosmicRayRemovalOperator(
+    task_id='remove_cosmic_rays',
+    image_path='{{ params.input_image }}',
+    session_id='{{ ds }}-production',
+    use_active_workflow=True,  # Auto-selects based on traffic %
+    processing_type='production'
+)
+```
+
+**Session-Based Consistent Assignment:**
+
+- Uses consistent hashing based on `sessionId`
+- Same session always gets same workflow version
+- Ensures reproducible results across processing steps
+
+#### Workflow Activation Management
+
+**Activate New Version:**
+
+```bash
+curl -X POST "/api/v1/workflows/cosmic-ray-removal/versions/v1.2/activate" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "activatedBy": "ops-team",
+    "reason": "Improved algorithm performance",
+    "trafficSplitPercentage": 100.0,
+    "deactivateOthers": true
+  }'
+```
+
+**Emergency Rollback:**
+
+```bash
+curl -X POST "/api/v1/workflows/cosmic-ray-removal/rollback" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "targetVersion": "v1.1",
+    "performedBy": "ops-team",
+    "reason": "Critical bug in v1.2"
+  }'
+```
+
+#### Enhanced Airflow Integration
+
+**New Workflow-Aware Operators:**
+
+```python
+# Automatic active workflow selection
+active_processing = ActiveWorkflowOperator(
+    task_id='process_with_active_workflow',
+    image_path='{{ params.input_image }}',
+    workflow_type='cosmic-ray-removal',
+    processing_type='production'
+)
+
+# Workflow performance comparison
+comparison = WorkflowComparisonOperator(
+    task_id='compare_algorithms',
+    workflow_name='cosmic-ray-removal',
+    baseline_version='v1.1',
+    comparison_version='v1.2'
+)
+
+# Experimental to production promotion
+promotion = WorkflowPromotionOperator(
+    task_id='promote_to_production',
+    experiment_name='cosmic-ray-v2.1',
+    new_production_version='v1.3',
+    promoted_by='{{ params.researcher_id }}'
+)
+```
+
+#### Workflow Performance Analytics
+
+**Comprehensive Metrics Collection:**
+
+```sql
+-- Query workflow performance trends
+SELECT
+    wv.workflow_name,
+    wv.workflow_version,
+    wv.performance_metrics->'avg_processing_time_ms' as avg_time,
+    wv.quality_metrics->'star_preservation_rate' as quality,
+    wv.usage_statistics->'usage_count' as usage_count
+FROM workflow_versions wv
+WHERE wv.is_active = true
+ORDER BY wv.workflow_name, wv.activated_at DESC;
+```
+
+**Real-time Workflow Monitoring:**
+
+```bash
+# Get workflow activation history
+curl -X GET "/api/v1/workflows/cosmic-ray-removal/history?limit=10"
+
+# Monitor active workflow performance
+curl -X GET "/api/v1/workflows/active" | jq '.[] | {name: .workflowName, version: .workflowVersion, traffic: .trafficSplitPercentage}'
+```
+
+#### Workflow Management CLI
+
+**Example Operations:**
+
+```bash
+# List all active workflows
+astro-cli workflows list --active
+
+# Activate new version with 20% traffic
+astro-cli workflows activate cosmic-ray-removal v1.2 \
+  --traffic-split 20 \
+  --reason "Gradual rollout of improved algorithm"
+
+# Compare workflow performance
+astro-cli workflows compare cosmic-ray-removal v1.1 v1.2 \
+  --metrics processing_time,quality_score,star_preservation
+
+# Promote experimental workflow
+astro-cli workflows promote experimental/cosmic-ray-v2.1 \
+  --to-version v1.3 \
+  --reason "ML-enhanced algorithm shows 15% improvement"
+
+# Emergency rollback
+astro-cli workflows rollback cosmic-ray-removal \
+  --to-version v1.1 \
+  --reason "Critical performance regression in v1.2"
+```
+
+#### Benefits of Processing ID + Workflow System
+
+**For Operations:**
+
+- ✅ **Clear Data Segregation** - Production and experimental data never mix
+- ✅ **Efficient Querying** - Database partitioning enables fast data access
+- ✅ **Organized Storage** - S3 hierarchy reflects processing context
+- ✅ **Audit Trail** - Complete lineage tracking for all processing
+- ✅ **Zero-Downtime Operations** - Seamless workflow version management
+- ✅ **Risk-Free Deployments** - A/B testing and gradual rollouts
+- ✅ **Emergency Procedures** - Quick rollback and incident response
+
+**For Research:**
+
+- ✅ **Experiment Tracking** - Every experiment has unique identification
+- ✅ **Reproducibility** - Complete parameter and context preservation
+- ✅ **Comparison Analysis** - Easy comparison between experimental runs
+- ✅ **Collaboration** - Researcher-specific data organization
+- ✅ **Production Pipeline** - Clear path from research to production
+- ✅ **Performance Validation** - Automated A/B testing capabilities
+- ✅ **Algorithm Evolution** - Track workflow improvements over time
+
+**For System Management:**
+
+- ✅ **Performance Optimization** - Partition pruning reduces query time
+- ✅ **Storage Management** - Lifecycle policies per processing type
+- ✅ **Resource Isolation** - Separate compute resources for different workloads
+- ✅ **Data Governance** - Clear ownership and retention policies
+- ✅ **Automated Operations** - API-driven workflow lifecycle management
+- ✅ **Multi-Version Support** - Multiple production workflows with traffic splitting
+
 ## 🚀 Quick Start
 
 ### Prerequisites

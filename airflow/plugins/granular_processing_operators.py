@@ -65,6 +65,11 @@ class GranularProcessingOperator(BaseOperator):
         project_id: Optional[str] = None,
         observation_id: Optional[str] = None,
         instrument_id: Optional[str] = None,
+        # Workflow versioning parameters
+        workflow_name: Optional[str] = None,
+        workflow_version: Optional[str] = None,
+        use_active_workflow: bool = True,
+        force_workflow_version: bool = False,
         **kwargs
     ) -> None:
         super().__init__(**kwargs)
@@ -88,6 +93,12 @@ class GranularProcessingOperator(BaseOperator):
         self.project_id = project_id
         self.observation_id = observation_id
         self.instrument_id = instrument_id
+
+        # Workflow versioning attributes
+        self.workflow_name = workflow_name
+        self.workflow_version = workflow_version
+        self.use_active_workflow = use_active_workflow
+        self.force_workflow_version = force_workflow_version
 
         # Get base URL from Airflow Variables
         self.base_url = Variable.get(
@@ -145,7 +156,62 @@ class GranularProcessingOperator(BaseOperator):
             if production_context:
                 payload['productionContext'] = production_context
 
+        # Add workflow versioning information
+        if self.workflow_name and self.workflow_version:
+            payload['workflowName'] = self.workflow_name
+            payload['workflowVersion'] = self.workflow_version
+
         return payload
+
+    def _get_active_workflow_info(self, step_type: str) -> Optional[Dict[str, Any]]:
+        """Get active workflow information for the processing step."""
+        try:
+            # Map processing step to workflow name
+            workflow_name = self._map_step_to_workflow(step_type)
+            if not workflow_name:
+                return None
+
+            url = f"{self.base_url}/api/v1/workflows/active"
+            params = {'processingType': self.processing_type}
+
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+
+            active_workflows = response.json()
+
+            # Find the active workflow for this step
+            for workflow in active_workflows:
+                if workflow.get('workflowName') == workflow_name:
+                    logger.info(f"Using active workflow {workflow_name} version {workflow.get('workflowVersion')} "
+                              f"with {workflow.get('trafficSplitPercentage', 100)}% traffic")
+
+                    return {
+                        'workflowName': workflow.get('workflowName'),
+                        'workflowVersion': workflow.get('workflowVersion'),
+                        'workflowTrafficSplit': workflow.get('trafficSplitPercentage'),
+                        'activeWorkflowMetadata': {
+                            'activatedBy': workflow.get('activatedBy'),
+                            'activatedAt': workflow.get('activatedAt'),
+                            'algorithmConfiguration': workflow.get('algorithmConfiguration', {})
+                        }
+                    }
+
+            logger.warning(f"No active workflow found for {workflow_name} in {self.processing_type} mode")
+            return None
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Failed to get active workflow info: {e}")
+            return None
+
+    def _map_step_to_workflow(self, step_type: str) -> Optional[str]:
+        """Map processing step type to workflow name."""
+        step_workflow_mapping = {
+            'bias-subtract': 'bias-subtraction',
+            'dark-subtract': 'dark-subtraction',
+            'flat-correct': 'flat-field-correction',
+            'cosmic-ray-remove': 'cosmic-ray-removal'
+        }
+        return step_workflow_mapping.get(step_type)
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Make HTTP request to granular processing endpoint."""
@@ -221,6 +287,14 @@ class BiasSubtractionOperator(GranularProcessingOperator):
     def execute(self, context: Dict) -> str:
         """Execute bias subtraction processing."""
         logger.info(f"Starting bias subtraction for {self.image_path}")
+
+        # Get active workflow info if enabled
+        if self.use_active_workflow and not self.force_workflow_version and not self.workflow_name:
+            workflow_info = self._get_active_workflow_info('bias-subtract')
+            if workflow_info:
+                logger.info(f"Using active workflow: {workflow_info}")
+                # Store workflow info in XCom for downstream tasks
+                context['ti'].xcom_push(key='active_workflow_info', value=workflow_info)
 
         payload = self._build_request_payload()
         result = self._make_request('bias-subtract', payload)
@@ -581,3 +655,303 @@ class IntermediateResultsOperator(BaseOperator):
         )
 
         return cleanup_result
+
+
+# =====================================================
+# New Workflow-Aware Operators
+# =====================================================
+
+class ActiveWorkflowOperator(BaseOperator):
+    """
+    Operator that automatically selects and uses the active workflow version
+    for a specific processing step.
+
+    This operator demonstrates the full workflow versioning capabilities by
+    automatically discovering and using active workflow versions.
+    """
+
+    template_fields: Sequence[str] = (
+        'image_path', 'session_id', 'workflow_type', 'processing_type'
+    )
+
+    @apply_defaults
+    def __init__(
+        self,
+        image_path: str,
+        session_id: str,
+        workflow_type: str,  # e.g., 'cosmic-ray-removal', 'bias-subtraction'
+        processing_type: str = 'production',
+        fallback_algorithm: str = 'default',
+        timeout: int = 300,
+        **kwargs
+    ) -> None:
+        super().__init__(**kwargs)
+        self.image_path = image_path
+        self.session_id = session_id
+        self.workflow_type = workflow_type
+        self.processing_type = processing_type
+        self.fallback_algorithm = fallback_algorithm
+        self.timeout = timeout
+
+        # Get base URL from Airflow Variables
+        self.base_url = Variable.get(
+            "image_processor_base_url",
+            "http://image-processor-service:8080"
+        )
+
+    def execute(self, context: Dict) -> Dict[str, Any]:
+        """Execute processing using the active workflow version."""
+        logger.info(f"Starting active workflow processing: {self.workflow_type} for {self.image_path}")
+
+        # Get active workflow for this type
+        active_workflow = self._get_active_workflow()
+        if not active_workflow:
+            raise AirflowException(f"No active workflow found for {self.workflow_type} in {self.processing_type} mode")
+
+        # Build processing request
+        payload = {
+            'imagePath': self.image_path,
+            'sessionId': self.session_id,
+            'workflowName': active_workflow['workflowName'],
+            'workflowVersion': active_workflow['workflowVersion'],
+            'processingType': self.processing_type,
+            'useActiveWorkflow': True
+        }
+
+        # Add algorithm configuration from active workflow
+        if 'algorithmConfiguration' in active_workflow:
+            algorithm_config = active_workflow['algorithmConfiguration']
+            payload['algorithm'] = algorithm_config.get('algorithm', self.fallback_algorithm)
+            payload['parameters'] = algorithm_config.get('parameters', {})
+
+        # Store workflow selection info in XCom
+        context['ti'].xcom_push(
+            key='selected_workflow',
+            value={
+                'workflowName': active_workflow['workflowName'],
+                'workflowVersion': active_workflow['workflowVersion'],
+                'trafficSplit': active_workflow.get('trafficSplitPercentage', 100),
+                'activatedBy': active_workflow.get('activatedBy'),
+                'selectionTime': context['ts']
+            }
+        )
+
+        # Execute processing
+        endpoint = self._get_processing_endpoint()
+        result = self._make_request(endpoint, payload)
+
+        logger.info(f"Active workflow processing completed: {result.get('outputPath')}")
+
+        return {
+            'outputPath': result.get('outputPath'),
+            'processingId': result.get('processingId'),
+            'workflowUsed': active_workflow,
+            'processingMetrics': result.get('processingMetrics', {})
+        }
+
+    def _get_active_workflow(self) -> Optional[Dict[str, Any]]:
+        """Get the active workflow for the specified type."""
+        try:
+            url = f"{self.base_url}/api/v1/workflows/active"
+            params = {'processingType': self.processing_type}
+
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+
+            active_workflows = response.json()
+
+            # Find matching workflow
+            for workflow in active_workflows:
+                if workflow.get('workflowName') == self.workflow_type:
+                    logger.info(f"Selected active workflow: {workflow.get('workflowName')} "
+                              f"version {workflow.get('workflowVersion')} "
+                              f"({workflow.get('trafficSplitPercentage', 100)}% traffic)")
+                    return workflow
+
+            logger.warning(f"No active workflow found for {self.workflow_type}")
+            return None
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to get active workflows: {e}")
+            return None
+
+    def _get_processing_endpoint(self) -> str:
+        """Map workflow type to processing endpoint."""
+        endpoint_mapping = {
+            'bias-subtraction': 'bias-subtract',
+            'dark-subtraction': 'dark-subtract',
+            'flat-field-correction': 'flat-correct',
+            'cosmic-ray-removal': 'cosmic-ray-remove'
+        }
+        return endpoint_mapping.get(self.workflow_type, 'process')
+
+    def _make_request(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Make HTTP request to processing endpoint."""
+        url = f"{self.base_url}/api/v1/processing/steps/{endpoint}"
+
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Processing request failed: {e}")
+            raise AirflowException(f"Failed to execute {endpoint}: {e}")
+
+
+class WorkflowComparisonOperator(BaseOperator):
+    """
+    Operator for comparing performance between different workflow versions.
+
+    Useful for A/B testing and performance evaluation of workflow versions.
+    """
+
+    template_fields: Sequence[str] = (
+        'image_path', 'session_id', 'workflow_name', 'baseline_version', 'comparison_version'
+    )
+
+    @apply_defaults
+    def __init__(
+        self,
+        image_path: str,
+        session_id: str,
+        workflow_name: str,
+        baseline_version: str,
+        comparison_version: str,
+        processing_type: str = 'experimental',
+        **kwargs
+    ) -> None:
+        super().__init__(**kwargs)
+        self.image_path = image_path
+        self.session_id = session_id
+        self.workflow_name = workflow_name
+        self.baseline_version = baseline_version
+        self.comparison_version = comparison_version
+        self.processing_type = processing_type
+
+        # Get base URL from Airflow Variables
+        self.base_url = Variable.get(
+            "image_processor_base_url",
+            "http://image-processor-service:8080"
+        )
+
+    def execute(self, context: Dict) -> Dict[str, Any]:
+        """Execute workflow comparison."""
+        logger.info(f"Starting workflow comparison: {self.baseline_version} vs {self.comparison_version}")
+
+        # Get comparison results from API
+        url = f"{self.base_url}/api/v1/workflows/{self.workflow_name}/compare"
+        params = {
+            'baselineVersion': self.baseline_version,
+            'comparisonVersion': self.comparison_version,
+            'processingType': self.processing_type
+        }
+
+        try:
+            response = requests.get(url, params=params, timeout=60)
+            response.raise_for_status()
+
+            comparison_result = response.json()
+
+            # Store detailed comparison in XCom
+            context['ti'].xcom_push(
+                key='workflow_comparison',
+                value=comparison_result
+            )
+
+            # Log key findings
+            recommendation = comparison_result.get('recommendation', 'No recommendation available')
+            logger.info(f"Workflow comparison completed. Recommendation: {recommendation}")
+
+            return comparison_result
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Workflow comparison failed: {e}")
+            raise AirflowException(f"Failed to compare workflows: {e}")
+
+
+class WorkflowPromotionOperator(BaseOperator):
+    """
+    Operator for promoting experimental workflows to production.
+
+    Handles the complete promotion process including validation and activation.
+    """
+
+    template_fields: Sequence[str] = (
+        'experiment_name', 'new_production_version', 'promoted_by'
+    )
+
+    @apply_defaults
+    def __init__(
+        self,
+        experiment_name: str,
+        new_production_version: str,
+        promoted_by: str,
+        promotion_reason: str,
+        performance_metrics: Optional[Dict[str, Any]] = None,
+        set_as_default: bool = True,
+        **kwargs
+    ) -> None:
+        super().__init__(**kwargs)
+        self.experiment_name = experiment_name
+        self.new_production_version = new_production_version
+        self.promoted_by = promoted_by
+        self.promotion_reason = promotion_reason
+        self.performance_metrics = performance_metrics or {}
+        self.set_as_default = set_as_default
+
+        # Get base URL from Airflow Variables
+        self.base_url = Variable.get(
+            "image_processor_base_url",
+            "http://image-processor-service:8080"
+        )
+
+    def execute(self, context: Dict) -> Dict[str, Any]:
+        """Execute workflow promotion."""
+        logger.info(f"Promoting experimental workflow {self.experiment_name} to production {self.new_production_version}")
+
+        url = f"{self.base_url}/api/v1/workflows/experimental/{self.experiment_name}/promote"
+
+        payload = {
+            'newProductionVersion': self.new_production_version,
+            'activatedBy': self.promoted_by,
+            'reason': self.promotion_reason,
+            'performanceMetrics': self.performance_metrics,
+            'setAsDefault': self.set_as_default
+        }
+
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=60
+            )
+            response.raise_for_status()
+
+            promotion_result = response.json()
+
+            # Store promotion details in XCom
+            context['ti'].xcom_push(
+                key='workflow_promotion',
+                value={
+                    'experimentName': self.experiment_name,
+                    'newProductionVersion': self.new_production_version,
+                    'promotedBy': self.promoted_by,
+                    'promotionTime': context['ts'],
+                    'result': promotion_result
+                }
+            )
+
+            logger.info(f"Workflow promotion completed successfully: {promotion_result.get('workflowVersion')}")
+
+            return promotion_result
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Workflow promotion failed: {e}")
+            raise AirflowException(f"Failed to promote workflow: {e}")

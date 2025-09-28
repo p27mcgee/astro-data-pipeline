@@ -23,11 +23,11 @@ public class ProcessingContext {
 
     /**
      * Unique processing ID - UUID format for global uniqueness
-     * Format: {type}-{timestamp}-{uuid}
+     * Enhanced Format: {type}-{version}-{timestamp}-{uuid}
      * Examples:
-     * prod-20240928-14a7f2b3-8c45-4d12-9f3e-abc123def456
-     * exp-20240928-67d8e9f1-2a34-4b56-8c90-def456abc123
-     * test-20240928-89ab123c-4d56-7e89-0f12-345678901234
+     * prod-v1.2-20240928-14a7f2b3-8c45-4d12-9f3e-abc123def456
+     * exp-cosmic-ray-v2.1-20240928-67d8e9f1-2a34-4b56-8c90-def456abc123
+     * test-v1.0-20240928-89ab123c-4d56-7e89-0f12-345678901234
      */
     private String processingId;
 
@@ -72,6 +72,19 @@ public class ProcessingContext {
      * Data lineage - tracks input sources and processing steps
      */
     private DataLineage dataLineage;
+
+    /**
+     * Workflow versioning and activation fields
+     */
+    private String workflowName;
+    private String workflowVersion;
+    private Boolean isActive;
+    private Boolean isDefault;
+    private LocalDateTime activatedAt;
+    private LocalDateTime deactivatedAt;
+    private String activatedBy;
+    private String activationReason;
+    private Double trafficSplitPercentage;
 
     /**
      * Processing type enumeration
@@ -156,12 +169,28 @@ public class ProcessingContext {
     }
 
     /**
-     * Generate a new processing ID with the specified type
+     * Generate a new processing ID with the specified type (legacy method)
      */
     public static String generateProcessingId(ProcessingType type) {
+        return generateProcessingId(type, "v1.0", null);
+    }
+
+    /**
+     * Generate a new processing ID with workflow versioning
+     */
+    public static String generateProcessingId(ProcessingType type, String workflowVersion, String workflowName) {
         String timestamp = LocalDateTime.now().toString().substring(0, 10).replace("-", "");
         String uuid = UUID.randomUUID().toString();
-        return String.format("%s-%s-%s", type.getPrefix(), timestamp, uuid);
+
+        if (type == ProcessingType.EXPERIMENTAL && workflowName != null) {
+            // For experimental: exp-{workflowName}-{version}-{timestamp}-{uuid}
+            return String.format("%s-%s-%s-%s-%s",
+                    type.getPrefix(), workflowName, workflowVersion, timestamp, uuid);
+        } else {
+            // For production and others: {type}-{version}-{timestamp}-{uuid}
+            return String.format("%s-%s-%s-%s",
+                    type.getPrefix(), workflowVersion, timestamp, uuid);
+        }
     }
 
     /**

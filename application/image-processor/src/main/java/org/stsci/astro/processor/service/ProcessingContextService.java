@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.stsci.astro.processor.model.ProcessingContext;
+import org.stsci.astro.processor.model.WorkflowVersion;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -25,6 +26,8 @@ public class ProcessingContextService {
     // In-memory storage for demonstration - would be replaced with database persistence
     private final Map<String, ProcessingContext> processingContexts = new ConcurrentHashMap<>();
     private final Map<String, String> sessionToProcessingIdMap = new ConcurrentHashMap<>();
+
+    private final WorkflowVersionService workflowVersionService;
 
     /**
      * Create a new production processing context
@@ -278,5 +281,179 @@ public class ProcessingContextService {
      */
     public ProcessingContext.ProcessingType getProcessingType(String processingId) {
         return ProcessingContext.parseProcessingType(processingId);
+    }
+
+    // =====================================================
+    // Workflow-aware context creation methods
+    // =====================================================
+
+    /**
+     * Create processing context using active workflow version
+     */
+    public ProcessingContext createContextWithActiveWorkflow(String workflowName, String sessionId,
+                                                             ProcessingContext.ProcessingType processingType) {
+        // Get active workflow version for this workflow type
+        Optional<WorkflowVersion> activeWorkflow = workflowVersionService.getActiveWorkflowForProcessing(
+                workflowName, processingType, sessionId);
+
+        if (activeWorkflow.isEmpty()) {
+            log.warn("No active workflow found for {} {}, using default", workflowName, processingType);
+            return createDefaultContext(sessionId, processingType);
+        }
+
+        return createContextFromWorkflowVersion(activeWorkflow.get(), sessionId);
+    }
+
+    /**
+     * Create processing context from a specific workflow version
+     */
+    public ProcessingContext createContextFromWorkflowVersion(WorkflowVersion workflowVersion, String sessionId) {
+        String processingId = ProcessingContext.generateProcessingId(
+                workflowVersion.getProcessingType(),
+                workflowVersion.getWorkflowVersion(),
+                workflowVersion.getWorkflowName()
+        );
+
+        ProcessingContext.ProcessingContextBuilder contextBuilder = ProcessingContext.builder()
+                .processingId(processingId)
+                .processingType(workflowVersion.getProcessingType())
+                .sessionId(sessionId)
+                .createdAt(LocalDateTime.now())
+                .pipelineVersion("1.0.0")
+                .workflowName(workflowVersion.getWorkflowName())
+                .workflowVersion(workflowVersion.getWorkflowVersion())
+                .isActive(workflowVersion.isCurrentlyActive())
+                .isDefault(workflowVersion.isDefaultVersion())
+                .activatedAt(workflowVersion.getActivatedAt())
+                .activatedBy(workflowVersion.getActivatedBy())
+                .activationReason(workflowVersion.getActivationReason())
+                .trafficSplitPercentage(workflowVersion.getTrafficSplitPercentage())
+                .processingParameters(workflowVersion.getParameterOverrides())
+                .dataLineage(ProcessingContext.DataLineage.builder()
+                        .processingDepth(0)
+                        .build());
+
+        // Add type-specific context
+        if (workflowVersion.getProcessingType() == ProcessingContext.ProcessingType.EXPERIMENTAL) {
+            contextBuilder.experimentContext(ProcessingContext.ExperimentContext.builder()
+                    .experimentName(workflowVersion.getWorkflowName())
+                    .researcherId(workflowVersion.getActivatedBy())
+                    .experimentStartTime(workflowVersion.getActivatedAt())
+                    .experimentParameters(workflowVersion.getAlgorithmConfiguration())
+                    .build());
+        } else if (workflowVersion.getProcessingType() == ProcessingContext.ProcessingType.PRODUCTION) {
+            contextBuilder.productionContext(ProcessingContext.ProductionContext.builder()
+                    .priority(1)
+                    .dataReleaseVersion("DR1")
+                    .calibrationFrameVersions(new HashMap<>())
+                    .build());
+        }
+
+        ProcessingContext context = contextBuilder.build();
+
+        // Store context
+        processingContexts.put(context.getProcessingId(), context);
+        sessionToProcessingIdMap.put(sessionId, context.getProcessingId());
+
+        // Update workflow usage statistics
+        workflowVersionService.updateWorkflowUsage(workflowVersion.getWorkflowName(),
+                workflowVersion.getWorkflowVersion(), workflowVersion.getProcessingType());
+
+        log.info("Created processing context from workflow {} {}: {} for session: {}",
+                workflowVersion.getWorkflowName(), workflowVersion.getWorkflowVersion(),
+                context.getProcessingId(), sessionId);
+
+        return context;
+    }
+
+    /**
+     * Get or create processing context for a workflow step
+     */
+    public ProcessingContext getOrCreateWorkflowContext(String workflowName, String sessionId,
+                                                        ProcessingContext.ProcessingType processingType,
+                                                        String workflowVersion) {
+        // Check if context already exists for this session
+        Optional<ProcessingContext> existingContext = getProcessingContextBySession(sessionId);
+        if (existingContext.isPresent()) {
+            return existingContext.get();
+        }
+
+        // Create new context with specified workflow version or active version
+        if (workflowVersion != null) {
+            Optional<WorkflowVersion> specificWorkflow = workflowVersionService.getWorkflowVersion(
+                    workflowName, workflowVersion, processingType);
+            if (specificWorkflow.isPresent()) {
+                return createContextFromWorkflowVersion(specificWorkflow.get(), sessionId);
+            }
+        }
+
+        // Fall back to active workflow
+        return createContextWithActiveWorkflow(workflowName, sessionId, processingType);
+    }
+
+    /**
+     * Create default context when no workflow is specified
+     */
+    private ProcessingContext createDefaultContext(String sessionId, ProcessingContext.ProcessingType processingType) {
+        ProcessingContext.ProcessingContextBuilder contextBuilder = ProcessingContext.builder()
+                .processingId(ProcessingContext.generateProcessingId(processingType))
+                .processingType(processingType)
+                .sessionId(sessionId)
+                .createdAt(LocalDateTime.now())
+                .pipelineVersion("1.0.0")
+                .workflowName("default-workflow")
+                .workflowVersion("v1.0")
+                .isActive(true)
+                .isDefault(true)
+                .trafficSplitPercentage(100.0)
+                .dataLineage(ProcessingContext.DataLineage.builder()
+                        .processingDepth(0)
+                        .build());
+
+        if (processingType == ProcessingContext.ProcessingType.PRODUCTION) {
+            contextBuilder.productionContext(ProcessingContext.ProductionContext.builder()
+                    .priority(1)
+                    .dataReleaseVersion("DR1")
+                    .calibrationFrameVersions(new HashMap<>())
+                    .build());
+        }
+
+        ProcessingContext context = contextBuilder.build();
+
+        // Store context
+        processingContexts.put(context.getProcessingId(), context);
+        sessionToProcessingIdMap.put(sessionId, context.getProcessingId());
+
+        return context;
+    }
+
+    /**
+     * Update processing context with workflow performance metrics
+     */
+    public void updateWorkflowMetrics(String processingId, Map<String, Object> performanceMetrics,
+                                      Map<String, Object> qualityMetrics) {
+        ProcessingContext context = getProcessingContext(processingId)
+                .orElseThrow(() -> new RuntimeException("Processing context not found: " + processingId));
+
+        if (context.getWorkflowName() != null && context.getWorkflowVersion() != null) {
+            workflowVersionService.updateWorkflowMetrics(
+                    context.getWorkflowName(),
+                    context.getWorkflowVersion(),
+                    context.getProcessingType(),
+                    performanceMetrics,
+                    qualityMetrics
+            );
+
+            log.debug("Updated workflow metrics for {} {} {}",
+                    context.getWorkflowName(), context.getWorkflowVersion(), context.getProcessingType());
+        }
+    }
+
+    /**
+     * Get recommended workflow version for a processing type
+     */
+    public Optional<WorkflowVersion> getRecommendedWorkflow(String workflowName,
+                                                            ProcessingContext.ProcessingType processingType) {
+        return workflowVersionService.getActiveWorkflowForProcessing(workflowName, processingType, "default");
     }
 }
