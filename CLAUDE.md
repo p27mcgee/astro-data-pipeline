@@ -54,8 +54,11 @@ astro-data-pipeline/
 │   ├── dags/                    # Apache Airflow DAGs
 │   │   ├── telescope_data_processing.py    # Main real-time processing pipeline
 │   │   ├── batch_processing_dag.py         # Large-scale historical data processing
-│   │   └── data_quality_monitoring.py     # Comprehensive quality checks
+│   │   ├── data_quality_monitoring.py     # Comprehensive quality checks
+│   │   ├── research_processing_dag.py      # Research workflow orchestration (Phase 3)
+│   │   └── research_workflow_templates.py # Research workflow templates (Phase 3)
 │   └── plugins/                 # Custom Airflow operators
+│       └── granular_processing_operators.py # Granular processing operators (Phase 3)
 ├── kubernetes/                  # ☸️ Container Orchestration
 │   ├── base/                    # Core Kubernetes manifests
 │   │   ├── namespace.yaml       # Resource quotas and limits
@@ -325,6 +328,195 @@ gh pr merge --squash                   # ✅ CD pipeline (18 min)
 
 - **Status:** ✅ Production-grade dual-workflow CI/CD with optimal developer experience
 
+## 🔬 Phase 3: Research Workflow Orchestration Implementation (2024-09-28)
+
+**Completion:** Successfully implemented comprehensive research workflow orchestration that demonstrates the full power
+of the flexible processing architecture developed in Phase 2.
+
+### 🎯 Phase 3 Objectives Achieved
+
+**✅ Research Processing DAG Development**
+
+- Created `research_processing_dag.py` - Flexible research workflow that orchestrates granular processing endpoints
+- Enables runtime configuration via DAG parameters for algorithm experimentation
+- Supports custom processing pipelines with step chaining and intermediate result management
+- Provides comprehensive validation and error handling for research workflows
+
+**✅ Custom Airflow Operators**
+
+- Implemented `granular_processing_operators.py` with specialized operators for each processing step:
+  - `BiasSubtractionOperator` - Bias frame subtraction with overscan correction
+  - `DarkSubtractionOperator` - Dark current subtraction with scaling options
+  - `FlatFieldCorrectionOperator` - Flat field correction with illumination modeling
+  - `CosmicRayRemovalOperator` - Cosmic ray detection and removal
+  - `AlgorithmDiscoveryOperator` - Dynamic algorithm availability checking
+  - `CustomWorkflowOperator` - Multi-step workflow orchestration
+  - `IntermediateResultsOperator` - Intermediate file management and cleanup
+
+**✅ Research Workflow Templates**
+
+- Created `research_workflow_templates.py` with pre-configured DAG templates:
+  - **Algorithm Comparison Template** - Side-by-side testing of different algorithm implementations
+  - **Parameter Optimization Template** - Grid search for optimal algorithm parameters
+  - **Quality Assessment Template** - Comprehensive quality evaluation across multiple images
+  - **Custom Research Template** - Flexible template for specialized research workflows
+
+### 🏗️ Architecture Implementation
+
+**Research DAG Features:**
+
+```python
+# Runtime algorithm selection and parameter customization
+{
+    "processing_steps": [
+        {
+            "step": "cosmic-ray-remove",
+            "algorithm": "lacosmic-v2",
+            "parameters": {"sigclip": 4.5, "starPreservation": True}
+        },
+        {
+            "step": "dark-subtract",
+            "algorithm": "adaptive-dark",
+            "parameters": {"windowSize": 64, "preserveStars": True}
+        }
+    ]
+}
+```
+
+**Custom Operator Architecture:**
+
+```python
+# Specialized operator with algorithm and parameter support
+cosmic_ray_task = CosmicRayRemovalOperator(
+    task_id='remove_cosmic_rays',
+    image_path='{{ params.input_image }}',
+    algorithm='lacosmic-v2',
+    parameters={'sigclip': 4.5, 'starPreservation': True},
+    output_path='research/cosmic_ray_test/'
+)
+```
+
+**Workflow Template Examples:**
+
+```python
+# Algorithm comparison workflow
+comparison_tasks = []
+for algo_config in algorithm_variants:
+    task = CosmicRayRemovalOperator(
+        task_id=f'test_{algo_config["algorithm"]}',
+        algorithm=algo_config['algorithm'],
+        parameters=algo_config['parameters']
+    )
+    comparison_tasks.append(task)
+```
+
+### 🔧 Technical Implementation Details
+
+**Granular Processing Integration:**
+
+- Direct integration with Phase 2 granular endpoints (`/api/v1/processing/steps/`)
+- Automatic algorithm availability checking via registry service
+- Comprehensive error handling and retry logic for processing failures
+- Metrics collection and XCom storage for performance analysis
+
+**Workflow Orchestration:**
+
+- Task group organization for complex multi-step workflows
+- Dynamic task generation based on runtime parameters
+- Intermediate result chaining between processing steps
+- Automatic cleanup of temporary files with configurable retention
+
+**Research Enablement:**
+
+- Session-based organization for tracking experimental results
+- Parameter grid generation for optimization workflows
+- Quality metrics collection and comparison analysis
+- Comprehensive research report generation
+
+### 🧪 Research Use Cases Enabled
+
+**1. Algorithm Comparison Studies**
+
+```bash
+# Compare cosmic ray removal algorithms
+airflow dags trigger algorithm_comparison_template \
+  --conf '{"processing_step": "cosmic-ray-remove",
+           "algorithms_to_compare": [
+             {"algorithm": "lacosmic", "parameters": {"sigclip": 4.5}},
+             {"algorithm": "lacosmic-v2", "parameters": {"starPreservation": true}},
+             {"algorithm": "median-filter", "parameters": {"kernelSize": 5}}
+           ]}'
+```
+
+**2. Parameter Optimization**
+
+```bash
+# Optimize L.A.Cosmic parameters
+airflow dags trigger parameter_optimization_template \
+  --conf '{"algorithm": "lacosmic-v2",
+           "parameter_grid": {
+             "sigclip": [3.0, 4.0, 4.5, 5.0],
+             "niter": [2, 3, 4, 5]
+           }}'
+```
+
+**3. Quality Assessment**
+
+```bash
+# Evaluate processing quality across image types
+airflow dags trigger quality_assessment_template \
+  --conf '{"input_images": [
+             "test-data/star_field.fits",
+             "test-data/galaxy_cluster.fits",
+             "test-data/nebula_region.fits"
+           ]}'
+```
+
+### 📊 Research Workflow Benefits
+
+**For Astronomers:**
+
+- ✅ **Algorithm Experimentation** - Easy testing of different processing approaches
+- ✅ **Parameter Tuning** - Systematic optimization of algorithm parameters
+- ✅ **Quality Analysis** - Comprehensive assessment of processing results
+- ✅ **Reproducibility** - Complete workflow documentation and version control
+
+**For Research Projects:**
+
+- ✅ **Flexible Pipelines** - Custom workflows tailored to specific research needs
+- ✅ **Batch Processing** - Large-scale processing with parallelization
+- ✅ **Data Management** - Organized storage and retrieval of experimental results
+- ✅ **Performance Metrics** - Detailed analysis of processing efficiency and quality
+
+**For Operations:**
+
+- ✅ **Resource Management** - Isolated research workloads with configurable limits
+- ✅ **Monitoring** - Real-time tracking of research workflow execution
+- ✅ **Cost Control** - Automatic cleanup and resource optimization
+- ✅ **Integration** - Seamless integration with production processing infrastructure
+
+### 🎯 Phase 3 Impact Summary
+
+**Technical Achievement:**
+
+- Successfully bridged the gap between production efficiency and research flexibility
+- Demonstrated how granular processing endpoints can be orchestrated for complex research workflows
+- Created reusable templates that significantly reduce the barrier to algorithmic experimentation
+
+**Research Enablement:**
+
+- Astronomers can now experiment with different algorithms without infrastructure complexity
+- Parameter optimization workflows enable systematic performance tuning
+- Quality assessment capabilities provide objective comparison of processing approaches
+
+**Architectural Validation:**
+
+- Proven that the hybrid monolithic + granular architecture delivers on its promise
+- Demonstrated seamless integration between production and research workflows
+- Validated the design decision to maintain backward compatibility while enabling innovation
+
+**Status:** ✅ Phase 3 Research Workflow Orchestration completed successfully
+
 ## 🔧 Key Features & Capabilities
 
 ### 🔬 Advanced Image Processing Service (Java Spring Boot)
@@ -348,6 +540,12 @@ gh pr merge --squash                   # ✅ CD pipeline (18 min)
 - **Quality Monitoring**: Comprehensive data quality checks with automated alerting and remediation
 - **Retry Logic**: Sophisticated failure handling with exponential backoff and circuit breaker patterns
 - **Resource Management**: Kubernetes-native execution with dynamic scaling and resource optimization
+- **🆕 Research Workflows (Phase 3)**: Flexible research DAGs orchestrating granular processing endpoints for algorithm
+  experimentation
+- **🆕 Custom Operators (Phase 3)**: Specialized Airflow operators for each processing step with algorithm selection and
+  parameter customization
+- **🆕 Workflow Templates (Phase 3)**: Pre-configured templates for common research scenarios including algorithm
+  comparison and parameter optimization
 
 ### 🏗️ Enterprise Infrastructure (AWS + Terraform)
 - **Multi-AZ Deployment**: High availability across multiple availability zones with automated failover
