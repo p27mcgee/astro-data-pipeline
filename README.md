@@ -245,30 +245,31 @@ experiment_task = CosmicRayRemovalOperator(
 
 Building on the processing ID foundation, the system implements **comprehensive workflow versioning** that enables:
 
-#### Multi-Version Production Support
+#### Single Active Production Workflow
 
-**Multiple Active Workflows:**
+**Deterministic Production Processing:**
 
 ```bash
 # List active workflows
 curl -X GET "/api/v1/workflows/active?processingType=production"
 
-# Example response showing A/B testing
+# Example response showing single active production workflow
 [
   {
     "workflowName": "cosmic-ray-removal",
-    "workflowVersion": "v1.1",
-    "trafficSplitPercentage": 80.0,
-    "isDefault": true
-  },
-  {
-    "workflowName": "cosmic-ray-removal",
     "workflowVersion": "v1.2",
-    "trafficSplitPercentage": 20.0,
-    "isDefault": false
+    "trafficSplitPercentage": 100.0,
+    "isDefault": true,
+    "isActive": true
   }
 ]
 ```
+
+**Why Single Active Production?**
+
+- **Scientific Reproducibility**: Ensures consistent, reproducible results
+- **Data Integrity**: No mixed results from different algorithm versions
+- **Operational Simplicity**: Clear production state and easier debugging
 
 #### Experimental → Production Promotion
 
@@ -290,26 +291,40 @@ curl -X POST "/api/v1/workflows/experimental/cosmic-ray-v2.1/promote" \
   }'
 ```
 
-#### Intelligent Workflow Selection
+#### Experimental Workflow Duplication
 
-**Traffic Splitting for A/B Testing:**
+**Complete Dataset Duplication for Algorithm Comparison:**
+
+```bash
+# Run experimental workflow on production datasets
+curl -X POST "/api/v1/workflows/cosmic-ray-removal/experimental/v2.1/duplicate-production" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "researcherId": "astronomer123",
+    "hypothesis": "ML-enhanced cosmic ray detection improves star preservation by 15%",
+    "productionDatasetIds": ["dataset-001", "dataset-002", "dataset-003"],
+    "priority": "HIGH"
+  }'
+```
+
+**Deterministic Workflow Selection:**
 
 ```python
-# Airflow automatically selects workflow based on traffic split
+# Airflow selects single active production workflow
 cosmic_ray_task = CosmicRayRemovalOperator(
     task_id='remove_cosmic_rays',
     image_path='{{ params.input_image }}',
     session_id='{{ ds }}-production',
-    use_active_workflow=True,  # Auto-selects based on traffic %
+    use_active_workflow=True,  # Always 100% deterministic
     processing_type='production'
 )
 ```
 
-**Session-Based Consistent Assignment:**
+**Why Deterministic Processing?**
 
-- Uses consistent hashing based on `sessionId`
-- Same session always gets same workflow version
-- Ensures reproducible results across processing steps
+- **Scientific Reproducibility**: Same inputs always produce identical outputs
+- **Data Integrity**: No contamination from mixed algorithm versions
+- **Easier Analysis**: Clear before/after comparisons vs statistical sampling
 
 #### Workflow Activation Management
 
@@ -403,10 +418,9 @@ curl -X GET "/api/v1/workflows/active" | jq '.[] | {name: .workflowName, version
 # List all active workflows
 astro-cli workflows list --active
 
-# Activate new version with 20% traffic
+# Activate new version (deterministic - always 100%)
 astro-cli workflows activate cosmic-ray-removal v1.2 \
-  --traffic-split 20 \
-  --reason "Gradual rollout of improved algorithm"
+  --reason "Improved algorithm validation complete"
 
 # Compare workflow performance
 astro-cli workflows compare cosmic-ray-removal v1.1 v1.2 \
@@ -432,7 +446,7 @@ astro-cli workflows rollback cosmic-ray-removal \
 - ✅ **Organized Storage** - S3 hierarchy reflects processing context
 - ✅ **Audit Trail** - Complete lineage tracking for all processing
 - ✅ **Zero-Downtime Operations** - Seamless workflow version management
-- ✅ **Risk-Free Deployments** - A/B testing and gradual rollouts
+- ✅ **Risk-Free Deployments** - Experimental validation before production promotion
 - ✅ **Emergency Procedures** - Quick rollback and incident response
 
 **For Research:**
@@ -442,7 +456,7 @@ astro-cli workflows rollback cosmic-ray-removal \
 - ✅ **Comparison Analysis** - Easy comparison between experimental runs
 - ✅ **Collaboration** - Researcher-specific data organization
 - ✅ **Production Pipeline** - Clear path from research to production
-- ✅ **Performance Validation** - Automated A/B testing capabilities
+- ✅ **Performance Validation** - Comprehensive experimental-to-production comparison
 - ✅ **Algorithm Evolution** - Track workflow improvements over time
 
 **For System Management:**
@@ -452,7 +466,7 @@ astro-cli workflows rollback cosmic-ray-removal \
 - ✅ **Resource Isolation** - Separate compute resources for different workloads
 - ✅ **Data Governance** - Clear ownership and retention policies
 - ✅ **Automated Operations** - API-driven workflow lifecycle management
-- ✅ **Multi-Version Support** - Multiple production workflows with traffic splitting
+- ✅ **Deterministic Processing** - Single active production workflow with experimental duplication
 
 ## 🚀 Quick Start
 

@@ -74,21 +74,29 @@ public class WorkflowVersionService {
             throw new RuntimeException("Workflow version not found: " + key);
         }
 
-        // Validate traffic split percentage
-        if (request.getTrafficSplitPercentage() != null) {
-            if (request.getTrafficSplitPercentage() < 0 || request.getTrafficSplitPercentage() > 100) {
-                throw new IllegalArgumentException("Traffic split percentage must be between 0 and 100");
+        // For production workflows, enforce single active version (no traffic splitting)
+        if (processingType == ProcessingContext.ProcessingType.PRODUCTION) {
+            // Production workflows must be 100% or 0% - no traffic splitting allowed
+            if (request.getTrafficSplitPercentage() != null &&
+                    request.getTrafficSplitPercentage() != 0.0 &&
+                    request.getTrafficSplitPercentage() != 100.0) {
+                throw new IllegalArgumentException("Production workflows do not support traffic splitting. Use 100% or deactivate.");
+            }
+            // Automatically deactivate other production versions for single active constraint
+            deactivateOtherVersions(workflowName, processingType, version);
+        } else {
+            // All workflows require deterministic 100% activation for scientific reproducibility
+            if (request.getTrafficSplitPercentage() != null &&
+                    request.getTrafficSplitPercentage() != 0.0 &&
+                    request.getTrafficSplitPercentage() != 100.0) {
+                throw new IllegalArgumentException("All workflows require deterministic processing. Use 100% activation or deactivate.");
+            }
+
+            // Deactivate other versions if requested for clean experimental comparison
+            if (Boolean.TRUE.equals(request.getDeactivateOthers())) {
+                deactivateOtherVersions(workflowName, processingType, version);
             }
         }
-
-        // Deactivate other versions if requested
-        if (Boolean.TRUE.equals(request.getDeactivateOthers())) {
-            deactivateOtherVersions(workflowName, processingType, version);
-        }
-
-        // Validate traffic allocation doesn't exceed 100%
-        validateTrafficAllocation(workflowName, processingType, version,
-                request.getTrafficSplitPercentage() != null ? request.getTrafficSplitPercentage() : 100.0);
 
         // Activate the workflow
         workflowVersion.setIsActive(true);
@@ -188,60 +196,60 @@ public class WorkflowVersionService {
     }
 
     /**
-     * Setup A/B testing between two workflow versions
+     * Duplicate production processing with experimental workflow for comparison
      */
     @Transactional
-    public Map<String, Object> setupABTest(String workflowName, ProcessingContext.ProcessingType processingType,
-                                           WorkflowVersionController.ABTestRequest request) {
-        // Validate traffic percentages sum to 100%
-        double totalTraffic = request.getTrafficPercentageA() + request.getTrafficPercentageB();
-        if (Math.abs(totalTraffic - 100.0) > 0.01) {
-            throw new IllegalArgumentException("Traffic percentages must sum to 100%");
+    public Map<String, Object> duplicateProductionWithExperimental(String workflowName, String experimentalVersion,
+                                                                   WorkflowVersionController.ExperimentalDuplicationRequest request) {
+        log.info("Starting experimental duplication: {} {} for researcher {}",
+                workflowName, experimentalVersion, request.getResearcherId());
+
+        // Validate experimental workflow exists and is active
+        Optional<WorkflowVersion> experimentalWorkflow = getWorkflowVersion(
+                workflowName, experimentalVersion, ProcessingContext.ProcessingType.EXPERIMENTAL);
+
+        if (!experimentalWorkflow.isPresent()) {
+            throw new IllegalArgumentException("Experimental workflow not found: " + workflowName + " " + experimentalVersion);
         }
 
-        // Get both workflow versions
-        WorkflowVersion versionA = getWorkflowVersion(workflowName, request.getVersionA(), processingType)
-                .orElseThrow(() -> new RuntimeException("Version A not found: " + request.getVersionA()));
+        if (!experimentalWorkflow.get().isCurrentlyActive()) {
+            throw new IllegalArgumentException("Experimental workflow is not active: " + workflowName + " " + experimentalVersion);
+        }
 
-        WorkflowVersion versionB = getWorkflowVersion(workflowName, request.getVersionB(), processingType)
-                .orElseThrow(() -> new RuntimeException("Version B not found: " + request.getVersionB()));
+        // Get active production workflow for comparison
+        Optional<WorkflowVersion> productionWorkflow = getActiveWorkflowForProcessing(
+                workflowName, ProcessingContext.ProcessingType.PRODUCTION, "duplication-session");
 
-        // Deactivate other versions
-        deactivateOtherVersions(workflowName, processingType, request.getVersionA(), request.getVersionB());
+        if (!productionWorkflow.isPresent()) {
+            throw new IllegalArgumentException("No active production workflow found for: " + workflowName);
+        }
 
-        // Activate both versions with specified traffic split
-        versionA.setIsActive(true);
-        versionA.setTrafficSplitPercentage(request.getTrafficPercentageA());
-        versionA.setActivatedAt(LocalDateTime.now());
-        versionA.setActivatedBy(request.getPerformedBy());
-        versionA.setActivationReason("A/B test setup: " + request.getReason());
+        // Create duplication plan
+        String duplicationId = ProcessingContext.generateProcessingId(
+                ProcessingContext.ProcessingType.EXPERIMENTAL, experimentalVersion, "duplication");
 
-        versionB.setIsActive(true);
-        versionB.setTrafficSplitPercentage(request.getTrafficPercentageB());
-        versionB.setActivatedAt(LocalDateTime.now());
-        versionB.setActivatedBy(request.getPerformedBy());
-        versionB.setActivationReason("A/B test setup: " + request.getReason());
+        Map<String, Object> duplicationPlan = Map.of(
+                "duplicationId", duplicationId,
+                "workflowName", workflowName,
+                "experimentalVersion", experimentalVersion,
+                "productionVersion", productionWorkflow.get().getWorkflowVersion(),
+                "researcherId", request.getResearcherId(),
+                "hypothesis", request.getHypothesis(),
+                "datasetCount", request.getProductionDatasetIds() != null ? request.getProductionDatasetIds().size() : 0,
+                "priority", request.getPriority(),
+                "startedAt", LocalDateTime.now(),
+                "status", "INITIATED"
+        );
 
-        // Log A/B test setup
-        logActivation(workflowName, "A/B-test", processingType, "ab-test", request.getPerformedBy(),
-                String.format("A/B test: %s (%s%%) vs %s (%s%%). %s",
-                        request.getVersionA(), request.getTrafficPercentageA(),
-                        request.getVersionB(), request.getTrafficPercentageB(),
-                        request.getReason()));
+        // Log duplication start
+        logActivation(workflowName, experimentalVersion, ProcessingContext.ProcessingType.EXPERIMENTAL,
+                "duplicate", request.getResearcherId(),
+                "Experimental duplication: " + request.getHypothesis());
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("workflowName", workflowName);
-        result.put("processingType", processingType);
-        result.put("versionA", versionA);
-        result.put("versionB", versionB);
-        result.put("setupBy", request.getPerformedBy());
-        result.put("setupAt", LocalDateTime.now());
+        log.info("Experimental duplication plan created: {} datasets to process with priority {}",
+                duplicationPlan.get("datasetCount"), request.getPriority());
 
-        log.info("A/B test setup for {}: {} ({}%) vs {} ({}%)",
-                workflowName, request.getVersionA(), request.getTrafficPercentageA(),
-                request.getVersionB(), request.getTrafficPercentageB());
-
-        return result;
+        return duplicationPlan;
     }
 
     /**
@@ -332,8 +340,22 @@ public class WorkflowVersionService {
             return Optional.of(activeVersions.get(0));
         }
 
-        // Multiple active versions - use consistent hashing for traffic splitting
-        return selectVersionByTrafficSplit(activeVersions, sessionId);
+        // Production workflows should only have one active version
+        if (processingType == ProcessingContext.ProcessingType.PRODUCTION) {
+            log.warn("Multiple active production workflows found for {}: {}. This violates single active production constraint.",
+                    workflowName, activeVersions.stream().map(WorkflowVersion::getWorkflowVersion).collect(Collectors.toList()));
+            // Return the most recently activated version
+            return activeVersions.stream()
+                    .max(Comparator.comparing(wv -> wv.getActivatedAt() != null ? wv.getActivatedAt() : LocalDateTime.MIN));
+        }
+
+        // Multiple active experimental versions should not occur in deterministic processing
+        log.warn("Multiple active experimental workflows found for {}: {}. Selecting most recently activated for deterministic processing.",
+                workflowName, activeVersions.stream().map(WorkflowVersion::getWorkflowVersion).collect(Collectors.toList()));
+
+        // Return the most recently activated version for deterministic behavior
+        return activeVersions.stream()
+                .max(Comparator.comparing(wv -> wv.getActivatedAt() != null ? wv.getActivatedAt() : LocalDateTime.MIN));
     }
 
     // Private helper methods
@@ -358,22 +380,6 @@ public class WorkflowVersionService {
                 });
     }
 
-    private void validateTrafficAllocation(String workflowName, ProcessingContext.ProcessingType processingType,
-                                           String currentVersion, Double newTrafficPercentage) {
-        double totalTraffic = workflowVersions.values().stream()
-                .filter(wv -> workflowName.equals(wv.getWorkflowName()))
-                .filter(wv -> wv.getProcessingType() == processingType)
-                .filter(wv -> !currentVersion.equals(wv.getWorkflowVersion()))
-                .filter(WorkflowVersion::isCurrentlyActive)
-                .mapToDouble(wv -> wv.getTrafficSplitPercentage() != null ? wv.getTrafficSplitPercentage() : 0.0)
-                .sum();
-
-        if (totalTraffic + newTrafficPercentage > 100.01) { // Allow small floating point errors
-            throw new IllegalArgumentException(
-                    String.format("Total traffic allocation would exceed 100%%: current %.1f%% + new %.1f%% = %.1f%%",
-                            totalTraffic, newTrafficPercentage, totalTraffic + newTrafficPercentage));
-        }
-    }
 
     private void setAsDefault(String workflowName, ProcessingContext.ProcessingType processingType, String version) {
         // Remove default flag from other versions
@@ -413,22 +419,6 @@ public class WorkflowVersionService {
         }
     }
 
-    private Optional<WorkflowVersion> selectVersionByTrafficSplit(List<WorkflowVersion> activeVersions, String sessionId) {
-        // Use consistent hashing based on sessionId for stable assignment
-        int hash = Math.abs(sessionId.hashCode());
-        double normalizedHash = (hash % 10000) / 100.0; // Convert to 0-100 range
-
-        double cumulativePercentage = 0.0;
-        for (WorkflowVersion version : activeVersions) {
-            cumulativePercentage += version.getEffectiveTrafficPercentage();
-            if (normalizedHash <= cumulativePercentage) {
-                return Optional.of(version);
-            }
-        }
-
-        // Fallback to first version if distribution doesn't add up to 100%
-        return activeVersions.isEmpty() ? Optional.empty() : Optional.of(activeVersions.get(0));
-    }
 
     private Map<String, Object> calculateMetricsDelta(Map<String, Object> baseline, Map<String, Object> comparison) {
         Map<String, Object> delta = new HashMap<>();

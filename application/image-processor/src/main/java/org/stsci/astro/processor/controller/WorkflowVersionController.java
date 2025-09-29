@@ -173,29 +173,31 @@ public class WorkflowVersionController {
         }
     }
 
-    @Operation(summary = "Set up A/B testing between workflow versions")
+    @Operation(summary = "Run experimental workflow on production dataset for comparison")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "A/B test configured successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid A/B test configuration")
+            @ApiResponse(responseCode = "200", description = "Experimental processing started successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid experimental processing request"),
+            @ApiResponse(responseCode = "404", description = "Workflow version not found")
     })
-    @PostMapping("/{workflowName}/ab-test")
-    public ResponseEntity<Map<String, Object>> setupABTest(
+    @PostMapping("/{workflowName}/experimental/{version}/duplicate-production")
+    public ResponseEntity<Map<String, Object>> duplicateProductionWithExperimental(
             @Parameter(description = "Workflow name") @PathVariable String workflowName,
-            @Parameter(description = "Processing type") @RequestParam String processingType,
-            @Parameter(description = "A/B test configuration") @Valid @RequestBody ABTestRequest request) {
+            @Parameter(description = "Experimental version") @PathVariable String version,
+            @Parameter(description = "Experimental duplication request") @Valid @RequestBody ExperimentalDuplicationRequest request) {
 
-        log.info("Setting up A/B test for workflow: {} with versions {} and {}",
-                workflowName, request.getVersionA(), request.getVersionB());
-
-        ProcessingContext.ProcessingType type = ProcessingContext.ProcessingType.valueOf(processingType.toUpperCase());
+        log.info("Starting experimental duplication for workflow: {} version {} by researcher {}",
+                workflowName, version, request.getResearcherId());
 
         try {
-            Map<String, Object> abTestResult = workflowVersionService.setupABTest(
-                    workflowName, type, request);
-            return ResponseEntity.ok(abTestResult);
+            Map<String, Object> duplicationResult = workflowVersionService.duplicateProductionWithExperimental(
+                    workflowName, version, request);
+            return ResponseEntity.ok(duplicationResult);
         } catch (IllegalArgumentException e) {
-            log.error("Failed to setup A/B test: {}", e.getMessage());
+            log.error("Failed to start experimental duplication: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
+        } catch (RuntimeException e) {
+            log.error("Experimental workflow not found: {}", e.getMessage());
+            return ResponseEntity.notFound().build();
         }
     }
 
@@ -264,73 +266,82 @@ public class WorkflowVersionController {
 
     // DTO classes for request bodies
 
-    @Schema(description = "A/B test configuration request")
-    public static class ABTestRequest {
-        @Schema(description = "First version for A/B test")
-        private String versionA;
+    @Schema(description = "Experimental workflow duplication request")
+    public static class ExperimentalDuplicationRequest {
+        @Schema(description = "Researcher ID performing the experiment")
+        private String researcherId;
 
-        @Schema(description = "Second version for A/B test")
-        private String versionB;
+        @Schema(description = "Research hypothesis being tested")
+        private String hypothesis;
 
-        @Schema(description = "Traffic percentage for version A (0-100)")
-        private Double trafficPercentageA;
+        @Schema(description = "Production dataset IDs to duplicate")
+        private List<String> productionDatasetIds;
 
-        @Schema(description = "Traffic percentage for version B (0-100)")
-        private Double trafficPercentageB;
+        @Schema(description = "Date range for production data selection")
+        private String dateRangeStart;
+        private String dateRangeEnd;
 
-        @Schema(description = "User performing the A/B test setup")
-        private String performedBy;
+        @Schema(description = "Maximum number of datasets to process (optional)")
+        private Integer maxDatasets;
 
-        @Schema(description = "Reason for A/B test")
-        private String reason;
+        @Schema(description = "Priority level for processing")
+        private String priority = "NORMAL";
 
         // Getters and setters
-        public String getVersionA() {
-            return versionA;
+        public String getResearcherId() {
+            return researcherId;
         }
 
-        public void setVersionA(String versionA) {
-            this.versionA = versionA;
+        public void setResearcherId(String researcherId) {
+            this.researcherId = researcherId;
         }
 
-        public String getVersionB() {
-            return versionB;
+        public String getHypothesis() {
+            return hypothesis;
         }
 
-        public void setVersionB(String versionB) {
-            this.versionB = versionB;
+        public void setHypothesis(String hypothesis) {
+            this.hypothesis = hypothesis;
         }
 
-        public Double getTrafficPercentageA() {
-            return trafficPercentageA;
+        public List<String> getProductionDatasetIds() {
+            return productionDatasetIds;
         }
 
-        public void setTrafficPercentageA(Double trafficPercentageA) {
-            this.trafficPercentageA = trafficPercentageA;
+        public void setProductionDatasetIds(List<String> productionDatasetIds) {
+            this.productionDatasetIds = productionDatasetIds;
         }
 
-        public Double getTrafficPercentageB() {
-            return trafficPercentageB;
+        public String getDateRangeStart() {
+            return dateRangeStart;
         }
 
-        public void setTrafficPercentageB(Double trafficPercentageB) {
-            this.trafficPercentageB = trafficPercentageB;
+        public void setDateRangeStart(String dateRangeStart) {
+            this.dateRangeStart = dateRangeStart;
         }
 
-        public String getPerformedBy() {
-            return performedBy;
+        public String getDateRangeEnd() {
+            return dateRangeEnd;
         }
 
-        public void setPerformedBy(String performedBy) {
-            this.performedBy = performedBy;
+        public void setDateRangeEnd(String dateRangeEnd) {
+            this.dateRangeEnd = dateRangeEnd;
         }
 
-        public String getReason() {
-            return reason;
+        public Integer getMaxDatasets() {
+            return maxDatasets;
         }
 
-        public void setReason(String reason) {
-            this.reason = reason;
+        public void setMaxDatasets(Integer maxDatasets) {
+            this.maxDatasets = maxDatasets;
+        }
+
+        public String getPriority() {
+            return priority;
+        }
+
+        public void setPriority(String priority) {
+            this.priority = priority;
         }
     }
 

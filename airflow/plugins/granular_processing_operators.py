@@ -183,12 +183,12 @@ class GranularProcessingOperator(BaseOperator):
             for workflow in active_workflows:
                 if workflow.get('workflowName') == workflow_name:
                     logger.info(f"Using active workflow {workflow_name} version {workflow.get('workflowVersion')} "
-                              f"with {workflow.get('trafficSplitPercentage', 100)}% traffic")
+                              f"(deterministic processing - always 100%)")
 
                     return {
                         'workflowName': workflow.get('workflowName'),
                         'workflowVersion': workflow.get('workflowVersion'),
-                        'workflowTrafficSplit': workflow.get('trafficSplitPercentage'),
+                        'deterministic': True,
                         'activeWorkflowMetadata': {
                             'activatedBy': workflow.get('activatedBy'),
                             'activatedAt': workflow.get('activatedAt'),
@@ -730,7 +730,7 @@ class ActiveWorkflowOperator(BaseOperator):
             value={
                 'workflowName': active_workflow['workflowName'],
                 'workflowVersion': active_workflow['workflowVersion'],
-                'trafficSplit': active_workflow.get('trafficSplitPercentage', 100),
+                'deterministicProcessing': True,
                 'activatedBy': active_workflow.get('activatedBy'),
                 'selectionTime': context['ts']
             }
@@ -765,7 +765,7 @@ class ActiveWorkflowOperator(BaseOperator):
                 if workflow.get('workflowName') == self.workflow_type:
                     logger.info(f"Selected active workflow: {workflow.get('workflowName')} "
                               f"version {workflow.get('workflowVersion')} "
-                              f"({workflow.get('trafficSplitPercentage', 100)}% traffic)")
+                              f"(deterministic - always 100%)")
                     return workflow
 
             logger.warning(f"No active workflow found for {self.workflow_type}")
@@ -808,7 +808,7 @@ class WorkflowComparisonOperator(BaseOperator):
     """
     Operator for comparing performance between different workflow versions.
 
-    Useful for A/B testing and performance evaluation of workflow versions.
+    Useful for performance evaluation of workflow versions through deterministic testing.
     """
 
     template_fields: Sequence[str] = (
