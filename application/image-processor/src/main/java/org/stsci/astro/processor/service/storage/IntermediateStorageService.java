@@ -66,7 +66,7 @@ public class IntermediateStorageService {
             String finalKey = finalPath != null ? finalPath : sourceKey;
             if (!finalKey.endsWith(".fits")) {
                 // Preserve original filename if custom path is a directory
-                String originalFilename = extractFilename(sourceKey);
+                String originalFilename = extractFilenamePreserveExtension(sourceKey);
                 if (finalKey.endsWith("/")) {
                     finalKey = finalKey + originalFilename;
                 } else {
@@ -197,6 +197,16 @@ public class IntermediateStorageService {
         }
 
         return filename;
+    }
+
+    private String extractFilenamePreserveExtension(String path) {
+        if (path == null || path.trim().isEmpty()) {
+            return "unknown";
+        }
+
+        // Handle both S3 paths (bucket/key) and simple file paths
+        String[] parts = path.split("/");
+        return parts[parts.length - 1];
     }
 
     private IntermediateFileInfo parseIntermediateFileInfo(String key, String sessionId) {
