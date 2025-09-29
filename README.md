@@ -407,7 +407,7 @@ ORDER BY wv.workflow_name, wv.activated_at DESC;
 curl -X GET "/api/v1/workflows/cosmic-ray-removal/history?limit=10"
 
 # Monitor active workflow performance
-curl -X GET "/api/v1/workflows/active" | jq '.[] | {name: .workflowName, version: .workflowVersion, traffic: .trafficSplitPercentage}'
+curl -X GET "/api/v1/workflows/active" | jq '.[] | {name: .workflowName, version: .workflowVersion, active: .isActive}'
 ```
 
 #### Workflow Management CLI
