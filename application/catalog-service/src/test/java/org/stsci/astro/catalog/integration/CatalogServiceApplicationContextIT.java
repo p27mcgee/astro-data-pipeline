@@ -106,6 +106,11 @@ class CatalogServiceApplicationContextIT {
     void postGISConfigurationShouldBeValid() {
         JdbcTemplate jdbcTemplate = applicationContext.getBean(JdbcTemplate.class);
 
+        // Enable PostGIS extension first (since we're not running migrations)
+        assertDoesNotThrow(() -> {
+            jdbcTemplate.execute("CREATE EXTENSION IF NOT EXISTS postgis;");
+        });
+
         // Verify PostGIS extension is available
         assertDoesNotThrow(() -> {
             String version = jdbcTemplate.queryForObject("SELECT PostGIS_Version()", String.class);
@@ -148,5 +153,14 @@ class CatalogServiceApplicationContextIT {
 
         registry.add("spring.elasticsearch.uris",
             () -> "http://" + elasticsearch.getHttpHostAddress());
+
+        // Disable Flyway for integration tests to avoid migration conflicts
+        registry.add("spring.flyway.enabled", () -> "false");
+
+        // Configure JPA for integration testing
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
+        registry.add("spring.jpa.properties.hibernate.boot.allow_jdbc_metadata_access", () -> "false");
+        registry.add("spring.jpa.properties.hibernate.validator.apply_to_ddl", () -> "false");
+        registry.add("spring.jpa.properties.hibernate.validator.autoregister_listeners", () -> "false");
     }
 }
