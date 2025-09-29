@@ -14,7 +14,7 @@ import org.stsci.astro.processor.dto.GranularProcessingRequest;
 import org.stsci.astro.processor.dto.GranularProcessingResponse;
 import org.stsci.astro.processor.service.GranularProcessingService;
 
-import javax.validation.Valid;
+import jakarta.validation.Valid;
 
 @Slf4j
 @RestController

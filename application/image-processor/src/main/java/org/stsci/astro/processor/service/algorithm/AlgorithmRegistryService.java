@@ -3,7 +3,7 @@ package org.stsci.astro.processor.service.algorithm;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -151,18 +151,17 @@ public class AlgorithmRegistryService {
                 AlgorithmInfo.builder()
                         .id("neural-cr")
                         .name("Neural Network Cosmic Ray Detection")
-                        .description("Deep learning-based cosmic ray detection (experimental)"
-                                .version("0.1")
-                                .parameters(Map.of(
-                                        "modelPath", "Path to trained model (required)",
-                                        "confidence", "Detection confidence threshold (default: 0.8)",
-                                        "patchSize", "Input patch size (default: 64)",
-                                        "overlap", "Patch overlap factor (default: 0.25)"
-                                ))
-                                .supported(false)
-                                .experimental(true)
-                                .build()
-                        );
+                        .description("Deep learning-based cosmic ray detection (experimental)")
+                        .version("0.1")
+                        .parameters(Map.of(
+                                "modelPath", "Path to trained model (required)",
+                                "confidence", "Detection confidence threshold (default: 0.8)",
+                                "patchSize", "Input patch size (default: 64)",
+                                "overlap", "Patch overlap factor (default: 0.25)"
+                        ))
+                        .supported(false)
+                        .experimental(true)
+                        .build());
         algorithmRegistry.put("cosmic-ray-removal", cosmicRayAlgorithms);
 
         // Bias Subtraction Algorithms

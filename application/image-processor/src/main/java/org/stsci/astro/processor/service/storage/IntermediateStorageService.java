@@ -35,7 +35,7 @@ public class IntermediateStorageService {
             log.info("Storing intermediate result: bucket={}, key={}, size={} bytes",
                     bucket, key, processedData.length);
 
-            s3Service.uploadFile(bucket, key, processedData);
+            s3Service.storeData(bucket, key, processedData);
 
             String fullPath = String.format("%s/%s", bucket, key);
             log.info("Successfully stored intermediate result at: {}", fullPath);
@@ -60,7 +60,7 @@ public class IntermediateStorageService {
             String sourceKey = pathParts[1];
 
             // Download from intermediate location
-            byte[] data = s3Service.downloadFile(intermediateResultPath);
+            byte[] data = s3Service.retrieveData(sourceBucket, sourceKey);
 
             // Build final key
             String finalKey = finalPath != null ? finalPath : sourceKey;
@@ -76,7 +76,7 @@ public class IntermediateStorageService {
 
             // Upload to final location
             String targetBucket = finalBucket != null ? finalBucket : defaultProcessedBucket;
-            s3Service.uploadFile(targetBucket, finalKey, data);
+            s3Service.storeData(targetBucket, finalKey, data);
 
             String finalResultPath = String.format("%s/%s", targetBucket, finalKey);
             log.info("Successfully moved final result to: {}", finalResultPath);
@@ -102,7 +102,7 @@ public class IntermediateStorageService {
                 String bucket = pathParts[0];
                 String key = pathParts[1];
 
-                s3Service.deleteFile(bucket, key);
+                s3Service.deleteObject(bucket, key);
                 log.debug("Deleted intermediate file: {}", filePath);
 
             } catch (Exception e) {
@@ -149,7 +149,7 @@ public class IntermediateStorageService {
                 }
 
                 try {
-                    s3Service.deleteFile(defaultIntermediateBucket, fileInfo.getKey());
+                    s3Service.deleteObject(defaultIntermediateBucket, fileInfo.getKey());
                     log.debug("Deleted session file: {}", fileInfo.getKey());
                 } catch (Exception e) {
                     log.warn("Failed to delete session file: {}", fileInfo.getKey(), e);

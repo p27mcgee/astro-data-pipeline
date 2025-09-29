@@ -535,4 +535,66 @@ public class WorkflowVersionService {
 
         log.info("Initialized sample workflow version data");
     }
+
+    /**
+     * Update workflow usage statistics
+     */
+    public void updateWorkflowUsage(String workflowName, String version, ProcessingContext.ProcessingType processingType) {
+        try {
+            String key = buildKey(workflowName, version, processingType);
+            WorkflowVersion workflowVersion = workflowVersions.get(key);
+
+            if (workflowVersion != null) {
+                Map<String, Object> currentStats = workflowVersion.getUsageStatistics();
+                Map<String, Object> updatedStats = new HashMap<>(currentStats);
+
+                // Increment usage count
+                Long currentCount = (Long) updatedStats.getOrDefault("usage_count", 0L);
+                updatedStats.put("usage_count", currentCount + 1);
+                updatedStats.put("last_used_at", LocalDateTime.now());
+
+                // Update the workflow version
+                workflowVersion.setUsageStatistics(updatedStats);
+                workflowVersion.setLastUsedAt(LocalDateTime.now());
+
+                log.debug("Updated usage statistics for workflow: {} {} {}", workflowName, version, processingType);
+            }
+        } catch (Exception e) {
+            log.error("Failed to update workflow usage: {} {} {}", workflowName, version, processingType, e);
+        }
+    }
+
+    /**
+     * Update workflow performance and quality metrics
+     */
+    public void updateWorkflowMetrics(String workflowName, String version, ProcessingContext.ProcessingType processingType,
+                                    Map<String, Object> performanceMetrics, Map<String, Object> qualityMetrics) {
+        try {
+            String key = buildKey(workflowName, version, processingType);
+            WorkflowVersion workflowVersion = workflowVersions.get(key);
+
+            if (workflowVersion != null) {
+                // Update performance metrics
+                Map<String, Object> updatedPerformanceMetrics = new HashMap<>(workflowVersion.getPerformanceMetrics());
+                if (performanceMetrics != null) {
+                    updatedPerformanceMetrics.putAll(performanceMetrics);
+                }
+
+                // Update quality metrics
+                Map<String, Object> updatedQualityMetrics = new HashMap<>(workflowVersion.getQualityMetrics());
+                if (qualityMetrics != null) {
+                    updatedQualityMetrics.putAll(qualityMetrics);
+                }
+
+                // Update the workflow version
+                workflowVersion.setPerformanceMetrics(updatedPerformanceMetrics);
+                workflowVersion.setQualityMetrics(updatedQualityMetrics);
+                workflowVersion.setLastUsedAt(LocalDateTime.now());
+
+                log.debug("Updated metrics for workflow: {} {} {}", workflowName, version, processingType);
+            }
+        } catch (Exception e) {
+            log.error("Failed to update workflow metrics: {} {} {}", workflowName, version, processingType, e);
+        }
+    }
 }

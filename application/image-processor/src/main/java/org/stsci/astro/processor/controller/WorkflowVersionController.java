@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -15,7 +16,6 @@ import org.stsci.astro.processor.model.ProcessingContext;
 import org.stsci.astro.processor.model.WorkflowVersion;
 import org.stsci.astro.processor.service.WorkflowVersionService;
 
-import javax.validation.Valid;
 import java.util.List;
 import java.util.Map;
 

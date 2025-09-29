@@ -105,6 +105,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 @Slf4j
@@ -1119,7 +1120,7 @@ public class FitsProcessingService {
             float[][] imageArray = fitsData.getImageData();
 
             // Apply cosmic ray removal using appropriate algorithm
-            float[][] processedArray;
+            float[][] processedArray = imageArray.clone();
             switch (algorithm.toLowerCase()) {
                 case "lacosmic-v2":
                     processedArray = applyLACosmicEnhanced(imageArray, parameters);
@@ -1129,7 +1130,7 @@ public class FitsProcessingService {
                     break;
                 case "lacosmic":
                 default:
-                    processedArray = removeCosmicRays(imageArray, fitsData);
+                    removeCosmicRays(processedArray, fitsData);
                     break;
             }
 
@@ -1312,21 +1313,6 @@ public class FitsProcessingService {
                 .build();
     }
 
-    private float[][] convertToFloatArray(Object data) {
-        if (data instanceof float[][]) {
-            return (float[][]) data;
-        } else if (data instanceof int[][]) {
-            int[][] intData = (int[][]) data;
-            float[][] floatData = new float[intData.length][intData[0].length];
-            for (int y = 0; y < intData.length; y++) {
-                for (int x = 0; x < intData[y].length; x++) {
-                    floatData[y][x] = (float) intData[y][x];
-                }
-            }
-            return floatData;
-        }
-        throw new IllegalArgumentException("Unsupported data type: " + data.getClass());
-    }
 
     private void addGranularProcessingMetadata(FitsImageData fitsData, String stepType,
                                                String algorithm, Map<String, Object> parameters) {
