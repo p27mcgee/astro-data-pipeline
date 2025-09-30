@@ -10,9 +10,10 @@
 # - No KMS encryption (uses AWS managed keys)
 
 # Basic Configuration
-aws_region   = "us-east-1"
-environment  = "staging"
-project_name = "astro-data-pipeline"
+aws_region             = "us-east-1"
+environment            = "staging"
+project_name           = "astro-data-pipeline"
+infrastructure_version = "1.0.1-alpha.1"
 
 # VPC Configuration - Single-AZ setup for cost optimization
 vpc_cidr              = "10.0.0.0/16"

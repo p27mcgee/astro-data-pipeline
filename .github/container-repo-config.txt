@@ -1,16 +1,20 @@
 Secrets to configure for docker image publication
 
   For Docker Hub setup:
+  Secrets:
+  CONTAINER_REGISTRY_PASSWORD = your-dockerhub-token
+  Variables:
   CONTAINER_REGISTRY = docker.io
   CONTAINER_REGISTRY_USERNAME = your-dockerhub-username
-  CONTAINER_REGISTRY_PASSWORD = your-dockerhub-token
   CONTAINER_REGISTRY_PREFIX = your-dockerhub-username
   CONTAINER_REGISTRY_URL = https://hub.docker.com/u/your-username
 
   For AWS ECR setup:
+  Secrets:
+  CONTAINER_REGISTRY_PASSWORD = your-ecr-token
+  Variables:
   CONTAINER_REGISTRY = 123456789012.dkr.ecr.us-east-1.amazonaws.com
   CONTAINER_REGISTRY_USERNAME = AWS
-  CONTAINER_REGISTRY_PASSWORD = your-ecr-token
   CONTAINER_REGISTRY_PREFIX = 123456789012.dkr.ecr.us-east-1.amazonaws.com
   CONTAINER_REGISTRY_URL = https://console.aws.amazon.com/ecr/repositories
 
