@@ -52,7 +52,7 @@ jobs:
         id: extract-version
         run: |
           cd application
-          APP_VERSION=$(grep '^version=' version.gradle | cut -d'=' -f2)
+          APP_VERSION=$(grep '^version=' gradle.properties | cut -d'=' -f2)
           echo "app-version=$APP_VERSION" >> $GITHUB_OUTPUT
           echo "🏷️ **Application Version: \`$APP_VERSION\`**" >> $GITHUB_STEP_SUMMARY
 
@@ -63,9 +63,9 @@ jobs:
         run: |
           # Get version from main branch
           git fetch origin main
-          git checkout origin/main -- application/version.gradle
-          MAIN_VERSION=$(grep '^version=' application/version.gradle | cut -d'=' -f2)
-          git checkout - -- application/version.gradle
+          git checkout origin/main -- application/gradle.properties
+          MAIN_VERSION=$(grep '^version=' application/gradle.properties | cut -d'=' -f2)
+          git checkout - -- application/gradle.properties
           
           echo "Current PR version: $APP_VERSION"
           echo "Main branch version: $MAIN_VERSION"
@@ -73,7 +73,7 @@ jobs:
           if [ "$APP_VERSION" = "$MAIN_VERSION" ]; then
             echo "❌ ERROR: Application version must be incremented for PR merge"
             echo "Current version: $APP_VERSION"
-            echo "Please update application/version.gradle with a new version"
+            echo "Please update application/gradle.properties with a new version"
             exit 1
           else
             echo "✅ Version validation passed: $MAIN_VERSION → $APP_VERSION"

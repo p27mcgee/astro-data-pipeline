@@ -9,14 +9,9 @@ plugins {
     id 'org.barfuin.gradle.taskinfo' version '2.2.0'
 }
 
-// Load version from external version.gradle file
-def versionProps = new Properties()
-file('version.gradle').withInputStream { versionProps.load(it) }
-def applicationVersion = versionProps.getProperty('version')
-
 allprojects {
     group = 'org.stsci.astro'
-    version = applicationVersion
+    // version is automatically read from gradle.properties
 
     repositories {
         mavenCentral()
