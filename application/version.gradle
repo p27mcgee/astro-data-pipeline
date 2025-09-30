@@ -1,0 +1,39 @@
+#
+Astronomical Data
+Pipeline - Application Version
+#
+#
+This file
+contains the canonical version
+for
+the application.
+#
+ALL application
+components(image - processor, catalog - service) will use
+this version.
+#
+#
+Version Format : MAJOR.MINOR.PATCH(Semantic Versioning)
+# -MAJOR :
+Breaking changes, incompatible
+API changes
+# -MINOR :
+New features, backward
+compatible
+# -PATCH :
+Bug fixes, backward
+compatible
+#
+# IMPORTANT:
+This version
+MUST be
+incremented
+for
+every PR merge to main .
+#
+The CI /
+CD pipeline
+will enforce
+this requirement.
+
+        version = 1.0 .1

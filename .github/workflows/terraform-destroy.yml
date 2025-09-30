@@ -1,0 +1,286 @@
+name: Terraform Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      last_layer:
+        description: 'Last layer to process (1-5)'
+        required: true
+        default: '3'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+          - '5'
+
+env:
+  TF_VERSION: '1.13.3'
+  AWS_REGION: us-east-1
+  TF_IN_AUTOMATION: true
+  TF_INPUT: false
+  ENVIRONMENT: 'staging'
+
+permissions:
+  id-token: write
+  contents: read
+  security-events: write  # Required for SARIF uploads
+
+jobs:
+  terraform-validate:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # AWS Role Trusts GitHub OIDC identity provider
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Format Check - Layered Architecture
+        run: |
+          cd terraform
+          # Check format for each layer
+          for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+            echo "Checking format for layer: $layer"
+            terraform fmt -check -recursive -diff $layer/
+          done
+        continue-on-error: true
+
+      - name: Terraform Validate - Layered Architecture
+        run: |
+          cd terraform
+          # Validate each layer independently
+          for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+            echo "Validating layer: $layer"
+            cd $layer
+            terraform init -backend=false
+            terraform validate
+            cd ..
+          done
+
+      - name: TFLint Installation
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.48.0
+
+      - name: TFLint Configuration
+        run: |
+          cd terraform
+          cat > .tflint.hcl << EOF
+          plugin "aws" {
+            enabled = true
+            version = "0.27.0"
+            source  = "github.com/terraform-linters/tflint-ruleset-aws"
+          }
+          
+          rule "terraform_required_version" {
+            enabled = true
+          }
+          
+          rule "terraform_required_providers" {
+            enabled = true
+          }
+          
+          rule "terraform_unused_declarations" {
+            enabled = true
+          }
+          
+          rule "terraform_comment_syntax" {
+            enabled = true
+          }
+          
+          rule "terraform_documented_outputs" {
+            enabled = true
+          }
+          
+          rule "terraform_documented_variables" {
+            enabled = true
+          }
+          
+          rule "terraform_typed_variables" {
+            enabled = true
+          }
+          
+          rule "terraform_module_pinned_source" {
+            enabled = true
+          }
+          
+          rule "terraform_naming_convention" {
+            enabled = true
+            format  = "snake_case"
+          }
+          
+          rule "terraform_standard_module_structure" {
+            enabled = true
+          }
+          EOF
+
+      - name: TFLint Run - Layered Architecture
+        run: |
+          cd terraform
+          # Run TFLint on each layer
+          for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+            echo "Running TFLint for layer: $layer"
+            cd $layer
+            tflint --init
+            tflint --format=compact
+            cd ..
+          done
+
+  terraform-plan-destroy:
+    name: Terraform Plan Destroy
+    runs-on: ubuntu-latest
+    needs: terraform-validate
+
+    permissions:
+      id-token: write
+      contents: read
+
+    outputs:
+      tfplanExitCode: ${{ steps.tf-plan-destroy.outputs.exitcode }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # AWS Role Trusts GitHub OIDC identity provider
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
+          role-session-name: GitHubActions-Terraform-Plan-Destroy
+          aws-region: ${{ env.AWS_REGION }}
+          # Explicit OIDC configuration
+          audience: sts.amazonaws.com
+          output-env-credentials: true
+
+      - name: Terraform Plan Destroy - Staging Environment
+        id: tf-plan-destroy
+        env:
+          LAST_LAYER: ${{ inputs.last_layer }}
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+        run: |
+          cd terraform
+          # Plan destruction in reverse layer order
+          chmod +x ci/deploy-layers.sh
+          echo "Planning destruction for ${ENVIRONMENT} environment..."
+          export exitcode=0
+          ./ci/deploy-layers.sh ${ENVIRONMENT}.tfvars plan $LAST_LAYER || export exitcode=$?
+          
+          echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
+          
+          if [ $exitcode -eq 1 ]; then
+            echo "Terraform Plan Destroy Failed"
+            exit 1
+          elif [ $exitcode -eq 0 ]; then
+            echo "Terraform Plan Destroy Succeeded"
+          else
+            echo "Terraform Plan Destroy Completed with exit code: $exitcode"
+          fi
+
+      - name: Create Terraform Plan Destroy Summary
+        env:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+          LAST_LAYER: ${{ inputs.last_layer }}
+        run: |
+          cd terraform
+          echo "## Terraform Plan Destroy Summary (${ENVIRONMENT^}) - Layered Architecture" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ Destruction plan completed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Processing Configuration:" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: ${ENVIRONMENT^}" >> $GITHUB_STEP_SUMMARY
+          echo "- Last layer to destroy: ${LAST_LAYER}" >> $GITHUB_STEP_SUMMARY
+          echo "- Actor: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Destruction Scope:" >> $GITHUB_STEP_SUMMARY
+          echo "Layers ${LAST_LAYER} through 5 will be destroyed in reverse order:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Layers to be destroyed:" >> $GITHUB_STEP_SUMMARY
+          [[ $LAST_LAYER -le 5 ]] && echo "- 5: 05-monitoring (CloudWatch, alarms)" >> $GITHUB_STEP_SUMMARY || true
+          [[ $LAST_LAYER -le 4 ]] && echo "- 4: 04-compute (EKS cluster)" >> $GITHUB_STEP_SUMMARY || true
+          [[ $LAST_LAYER -le 3 ]] && echo "- 3: 03-database (RDS PostgreSQL)" >> $GITHUB_STEP_SUMMARY || true
+          [[ $LAST_LAYER -le 2 ]] && echo "- 2: 02-data (S3 buckets, Lambda triggers)" >> $GITHUB_STEP_SUMMARY || true
+          [[ $LAST_LAYER -le 1 ]] && echo "- 1: 01-foundation (VPC, networking, security groups)" >> $GITHUB_STEP_SUMMARY || true
+
+  terraform-destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    needs: terraform-plan-destroy
+    if: needs.terraform-plan-destroy.outputs.tfplanExitCode == '0'
+    environment:
+      name: staging
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # AWS Role Trusts GitHub OIDC identity provider
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
+          role-session-name: GitHubActions-Terraform-Destroy
+          aws-region: ${{ env.AWS_REGION }}
+          # Explicit OIDC configuration
+          audience: sts.amazonaws.com
+          output-env-credentials: true
+
+      - name: Terraform Destroy - Staging Environment
+        env:
+          LAST_LAYER: ${{ inputs.last_layer }}
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+        run: |
+          cd terraform
+          # Execute destruction using the layered deployment script
+          chmod +x ci/deploy-layers.sh
+          ./ci/deploy-layers.sh ${ENVIRONMENT}.tfvars destroy $LAST_LAYER
+
+      - name: Create Terraform Destroy Summary
+        env:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+          LAST_LAYER: ${{ inputs.last_layer }}
+        run: |
+          cd terraform
+          echo "## Terraform Destroy Results (${ENVIRONMENT^}) - Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "💥 Infrastructure layers successfully destroyed from ${ENVIRONMENT} environment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Destruction Details:" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: ${ENVIRONMENT^}" >> $GITHUB_STEP_SUMMARY
+          echo "- Layers destroyed: ${LAST_LAYER} through 5 (reverse order)" >> $GITHUB_STEP_SUMMARY
+          echo "- Triggered by: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Workflow run: ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Timestamp: $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps:" >> $GITHUB_STEP_SUMMARY
+          echo "- Infrastructure cleanup completed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- AWS resources in selected layers have been removed" >> $GITHUB_STEP_SUMMARY
+          echo "- Manual verification of resource deletion is recommended" >> $GITHUB_STEP_SUMMARY
