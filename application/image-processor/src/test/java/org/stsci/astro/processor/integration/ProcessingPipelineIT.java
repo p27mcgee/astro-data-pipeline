@@ -31,9 +31,8 @@ import static org.mockito.Mockito.*;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ExtendWith(MockitoExtension.class)
-@ActiveProfiles("test")
+@ActiveProfiles("${spring.profiles.active:test}")
 @TestPropertySource(properties = {
-        "spring.profiles.active=test",
         "astro.processing.enable-parallel=false",
         "astro.storage.intermediate-bucket=test-intermediate",
         "astro.storage.processed-bucket=test-processed"
