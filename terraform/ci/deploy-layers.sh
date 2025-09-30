@@ -54,22 +54,23 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Check if tfvars file exists (skip for validate-only action)
-if [[ ! -f "$TFVARS_FILE" ]] && [[ "$ACTION" != "validate" ]]; then
+# Check if tfvars file exists (skip for validate-only and format-only actions)
+if [[ ! -f "$TFVARS_FILE" ]] && [[ "$ACTION" != "validate" ]] && [[ "$ACTION" != "format" ]]; then
     log_error "Terraform variables file '$TFVARS_FILE' not found!"
     log_info "Available files:"
     ls -la *.tfvars.example 2>/dev/null || echo "No example files found"
     log_info "For validation only, you can use: $0 dummy validate [last_layer]"
+    log_info "For formatting only, you can use: $0 dummy format [last_layer]"
     exit 1
 fi
 
 # Validate action
-if [[ ! "$ACTION" =~ ^(plan|apply|destroy|validate)$ ]]; then
-    log_error "Invalid action '$ACTION'. Use: plan, apply, destroy, or validate"
+if [[ ! "$ACTION" =~ ^(plan|apply|destroy|validate|format)$ ]]; then
+    log_error "Invalid action '$ACTION'. Use: plan, apply, destroy, validate, or format"
     log_info "Usage: $0 <tfvars_file> <action> [last_layer]"
     log_info "  tfvars_file: Path to .tfvars file (e.g., staging.tfvars)"
-    log_info "  action: plan, apply, destroy, or validate"
-    log_info "  last_layer: For deploy/plan/validate: last layer to build (1-5)"
+    log_info "  action: plan, apply, destroy, validate, or format"
+    log_info "  last_layer: For deploy/plan/validate/format: last layer to process (1-5)"
     log_info "             For destroy: last layer to destroy (1-5)"
     log_info "  Environment variable LAST_LAYER can also be used"
     log_info ""
@@ -121,7 +122,7 @@ for layer in "${PROCESSING_LAYERS[@]}"; do
     cd "$layer"
 
     # Set tfvars file path (relative to layer directory)
-    if [[ "$ACTION" != "validate" ]]; then
+    if [[ "$ACTION" != "validate" ]] && [[ "$ACTION" != "format" ]]; then
         TFVARS_PATH="../$TFVARS_FILE"
         if [[ ! -f "$TFVARS_PATH" ]]; then
             log_error "Terraform variables file '$TFVARS_FILE' not found at $TFVARS_PATH"
@@ -138,7 +139,7 @@ for layer in "${PROCESSING_LAYERS[@]}"; do
     fi
 
     # Initialize workspace if needed
-    if [[ "$ACTION" != "validate" ]]; then
+    if [[ "$ACTION" != "validate" ]] && [[ "$ACTION" != "format" ]]; then
         WORKSPACE=$(echo "$TFVARS_FILE" | sed 's/.tfvars//')
         log_info "Configuring workspace for environment: $WORKSPACE"
 
@@ -181,6 +182,18 @@ for layer in "${PROCESSING_LAYERS[@]}"; do
                 fi
             else
                 log_warning "Checkov not found - skipping security scan (install with 'pip install checkov')"
+            fi
+            ;;
+        "format")
+            log_info "Formatting $layer..."
+
+            # Check if any files need formatting
+            if terraform fmt -check -diff; then
+                log_success "All terraform files in $layer are properly formatted"
+            else
+                log_info "Formatting terraform files in $layer..."
+                terraform fmt
+                log_success "Terraform files in $layer have been formatted"
             fi
             ;;
         "plan")

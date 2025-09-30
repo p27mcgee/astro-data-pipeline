@@ -142,12 +142,21 @@ astro:
     s3:
       raw-data-bucket: ${S3_RAW_DATA_BUCKET:astro-data-pipeline-raw-data-dev}
       processed-data-bucket: ${S3_PROCESSED_DATA_BUCKET:astro-data-pipeline-processed-data-dev}
+      intermediate-data-bucket: ${S3_INTERMEDIATE_DATA_BUCKET:astro-data-pipeline-intermediate-data-dev}
       archive-bucket: ${S3_ARCHIVE_BUCKET:astro-data-pipeline-archive-dev}
       region: ${S3_REGION:us-east-1}
       multipart-threshold-mb: ${S3_MULTIPART_THRESHOLD_MB:100}
       max-retries: ${S3_MAX_RETRIES:3}
       request-timeout: ${S3_REQUEST_TIMEOUT:PT5M}
       use-accelerate-endpoint: ${S3_USE_ACCELERATE_ENDPOINT:false}
+
+    storage:
+      intermediate-bucket: ${STORAGE_INTERMEDIATE_BUCKET:astro-data-pipeline-intermediate-data-dev}
+      processed-bucket: ${STORAGE_PROCESSED_BUCKET:astro-data-pipeline-processed-data-dev}
+      session-cleanup-enabled: ${STORAGE_SESSION_CLEANUP_ENABLED:true}
+      session-cleanup-delay-hours: ${STORAGE_SESSION_CLEANUP_DELAY_HOURS:24}
+      max-intermediate-file-age-hours: ${STORAGE_MAX_INTERMEDIATE_FILE_AGE_HOURS:168} # 7 days
+      enable-versioning: ${STORAGE_ENABLE_VERSIONING:false}
     
     monitoring:
       enable-metrics: ${MONITORING_ENABLE_METRICS:true}
@@ -202,7 +211,16 @@ astro:
     s3:
       raw-data-bucket: test-raw-bucket
       processed-data-bucket: test-processed-bucket
+      intermediate-data-bucket: test-intermediate-bucket
       archive-bucket: test-archive-bucket
+
+    storage:
+      intermediate-bucket: test-intermediate-bucket
+      processed-bucket: test-processed-bucket
+      session-cleanup-enabled: false
+      session-cleanup-delay-hours: 1
+      max-intermediate-file-age-hours: 24
+      enable-versioning: false
 
 ---
 
@@ -230,8 +248,17 @@ astro:
     s3:
       raw-data-bucket: astro-data-pipeline-raw-data-prod
       processed-data-bucket: astro-data-pipeline-processed-data-prod
+      intermediate-data-bucket: astro-data-pipeline-intermediate-data-prod
       archive-bucket: astro-data-pipeline-archive-prod
       use-accelerate-endpoint: true
+
+    storage:
+      intermediate-bucket: astro-data-pipeline-intermediate-data-prod
+      processed-bucket: astro-data-pipeline-processed-data-prod
+      session-cleanup-enabled: true
+      session-cleanup-delay-hours: 48
+      max-intermediate-file-age-hours: 168 # 7 days
+      enable-versioning: true
     
     monitoring:
       enable-metrics: true

@@ -3,8 +3,8 @@ package org.stsci.astro.catalog.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
 import org.locationtech.jts.geom.Point;
 
@@ -151,7 +151,7 @@ public class AstronomicalObject {
     private Double fluxAuto; // Automatic aperture flux
 
     @JdbcTypeCode(SqlTypes.ARRAY)
-    @Column(name = "flux_aper")
+    @Column(name = "flux_aper", columnDefinition = "DOUBLE PRECISION[]")
     private double[] fluxAper; // Aperture photometry array
 
     @Column(name = "flux_psf")

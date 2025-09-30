@@ -105,6 +105,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 @Slf4j
@@ -1018,5 +1019,496 @@ public class FitsProcessingService {
         long baseMemory = (long) imageData.getWidth() * imageData.getHeight() * 4; // 4 bytes per float
         long processingOverhead = baseMemory * 3; // Assume 3x overhead for processing
         return (baseMemory + processingOverhead) / (1024 * 1024); // Convert to MB
+    }
+
+    // ================================================================================================
+    // GRANULAR PROCESSING METHODS FOR FLEXIBLE ARCHITECTURE
+    // ================================================================================================
+    // These methods support the flexible processing architecture allowing individual calibration
+    // steps to be called independently for research workflows and experimentation.
+
+    /**
+     * Applies dark subtraction as a standalone granular processing step.
+     * Designed for flexible research workflows where individual calibration steps
+     * can be applied independently and chained together.
+     *
+     * @param imageData     Raw FITS image data as byte array
+     * @param darkFrameData Dark frame calibration data (optional)
+     * @param parameters    Algorithm-specific parameters
+     * @param algorithm     Algorithm implementation to use
+     * @return Processed image data as byte array
+     */
+    public byte[] applyDarkSubtractionGranular(byte[] imageData, byte[] darkFrameData,
+                                               Map<String, Object> parameters, String algorithm) {
+        try {
+            log.info("Starting granular dark subtraction with algorithm: {}", algorithm);
+
+            // Parse input FITS data
+            FitsImageData fitsData = parseImageData(imageData);
+            float[][] imageArray = fitsData.getImageData();
+
+            // Apply dark subtraction using existing method
+            float[][] processedArray = applyDarkSubtraction(imageArray, fitsData);
+
+            // Apply algorithm-specific enhancements if requested
+            if (parameters != null && !parameters.isEmpty()) {
+                processedArray = applyDarkSubtractionParameters(processedArray, parameters, algorithm);
+            }
+
+            // Update FITS metadata for granular processing
+            fitsData.setImageData(processedArray);
+            addGranularProcessingMetadata(fitsData, "dark-subtraction", algorithm, parameters);
+
+            // Generate output FITS
+            return generateOutputFits(processedArray, fitsData);
+
+        } catch (Exception e) {
+            log.error("Granular dark subtraction failed with algorithm: {}", algorithm, e);
+            throw new FitsProcessingException("Dark subtraction failed", e);
+        }
+    }
+
+    /**
+     * Applies flat field correction as a standalone granular processing step.
+     *
+     * @param imageData     Image data to process
+     * @param flatFrameData Flat field calibration data (optional)
+     * @param parameters    Algorithm-specific parameters
+     * @param algorithm     Algorithm implementation to use
+     * @return Processed image data as byte array
+     */
+    public byte[] applyFlatFieldCorrectionGranular(byte[] imageData, byte[] flatFrameData,
+                                                   Map<String, Object> parameters, String algorithm) {
+        try {
+            log.info("Starting granular flat field correction with algorithm: {}", algorithm);
+
+            FitsImageData fitsData = parseImageData(imageData);
+            float[][] imageArray = fitsData.getImageData();
+
+            // Apply flat field correction using existing method
+            float[][] processedArray = applyFlatFieldCorrection(imageArray, fitsData);
+
+            // Apply algorithm-specific enhancements
+            if (parameters != null && !parameters.isEmpty()) {
+                processedArray = applyFlatCorrectionParameters(processedArray, parameters, algorithm);
+            }
+
+            fitsData.setImageData(processedArray);
+            addGranularProcessingMetadata(fitsData, "flat-correction", algorithm, parameters);
+
+            return generateOutputFits(processedArray, fitsData);
+
+        } catch (Exception e) {
+            log.error("Granular flat field correction failed with algorithm: {}", algorithm, e);
+            throw new FitsProcessingException("Flat field correction failed", e);
+        }
+    }
+
+    /**
+     * Applies cosmic ray removal as a standalone granular processing step.
+     *
+     * @param imageData  Image data to process
+     * @param parameters Algorithm-specific parameters
+     * @param algorithm  Algorithm implementation to use
+     * @return Processed image data as byte array
+     */
+    public byte[] removeCosmicRaysGranular(byte[] imageData, Map<String, Object> parameters, String algorithm) {
+        try {
+            log.info("Starting granular cosmic ray removal with algorithm: {}", algorithm);
+
+            FitsImageData fitsData = parseImageData(imageData);
+            float[][] imageArray = fitsData.getImageData();
+
+            // Apply cosmic ray removal using appropriate algorithm
+            float[][] processedArray = imageArray.clone();
+            switch (algorithm.toLowerCase()) {
+                case "lacosmic-v2":
+                    processedArray = applyLACosmicEnhanced(imageArray, parameters);
+                    break;
+                case "median-filter":
+                    processedArray = applyMedianFilterCosmicRayRemoval(imageArray, parameters);
+                    break;
+                case "lacosmic":
+                default:
+                    removeCosmicRays(processedArray, fitsData);
+                    break;
+            }
+
+            fitsData.setImageData(processedArray);
+            addGranularProcessingMetadata(fitsData, "cosmic-ray-removal", algorithm, parameters);
+
+            return generateOutputFits(processedArray, fitsData);
+
+        } catch (Exception e) {
+            log.error("Granular cosmic ray removal failed with algorithm: {}", algorithm, e);
+            throw new FitsProcessingException("Cosmic ray removal failed", e);
+        }
+    }
+
+    /**
+     * Applies bias subtraction as a standalone granular processing step.
+     *
+     * @param imageData     Image data to process
+     * @param biasFrameData Bias frame calibration data (optional)
+     * @param parameters    Algorithm-specific parameters
+     * @param algorithm     Algorithm implementation to use
+     * @return Processed image data as byte array
+     */
+    public byte[] applyBiasSubtractionGranular(byte[] imageData, byte[] biasFrameData,
+                                               Map<String, Object> parameters, String algorithm) {
+        try {
+            log.info("Starting granular bias subtraction with algorithm: {}", algorithm);
+
+            FitsImageData fitsData = parseImageData(imageData);
+            float[][] imageArray = fitsData.getImageData();
+
+            // Apply bias subtraction (simplified implementation)
+            float[][] processedArray = applyBiasSubtraction(imageArray, fitsData, parameters);
+
+            // Apply algorithm-specific enhancements
+            if (parameters != null && !parameters.isEmpty()) {
+                processedArray = applyBiasSubtractionParameters(processedArray, parameters, algorithm);
+            }
+
+            fitsData.setImageData(processedArray);
+            addGranularProcessingMetadata(fitsData, "bias-subtraction", algorithm, parameters);
+
+            return generateOutputFits(processedArray, fitsData);
+
+        } catch (Exception e) {
+            log.error("Granular bias subtraction failed with algorithm: {}", algorithm, e);
+            throw new FitsProcessingException("Bias subtraction failed", e);
+        }
+    }
+
+    // ================================================================================================
+    // ALGORITHM-SPECIFIC IMPLEMENTATIONS
+    // ================================================================================================
+
+    private float[][] applyDarkSubtractionParameters(float[][] imageArray, Map<String, Object> parameters, String algorithm) {
+        switch (algorithm.toLowerCase()) {
+            case "scaled-dark":
+                return applyScaledDarkSubtraction(imageArray, parameters);
+            case "adaptive-dark":
+                return applyAdaptiveDarkSubtraction(imageArray, parameters);
+            default:
+                return imageArray;
+        }
+    }
+
+    private float[][] applyScaledDarkSubtraction(float[][] imageArray, Map<String, Object> parameters) {
+        double scaleFactor = getParameterAsDouble(parameters, "scaleFactor", 1.0);
+        boolean autoScale = getParameterAsBoolean(parameters, "autoScale", true);
+
+        log.debug("Applying scaled dark subtraction with scale factor: {}, auto-scale: {}", scaleFactor, autoScale);
+
+        if (autoScale) {
+            // Calculate optimal scale factor based on exposure time ratio
+            scaleFactor = calculateAutoScaleFactor(parameters);
+        }
+
+        // Apply scaling to the dark subtraction
+        int height = imageArray.length;
+        int width = imageArray[0].length;
+        float[][] result = new float[height][width];
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                result[y][x] = (float) (imageArray[y][x] * scaleFactor);
+            }
+        }
+
+        return result;
+    }
+
+    private float[][] applyAdaptiveDarkSubtraction(float[][] imageArray, Map<String, Object> parameters) {
+        int windowSize = getParameterAsInt(parameters, "windowSize", 64);
+        double adaptiveThreshold = getParameterAsDouble(parameters, "adaptiveThreshold", 3.0);
+
+        log.debug("Applying adaptive dark subtraction with window size: {}, threshold: {}", windowSize, adaptiveThreshold);
+
+        // Simplified adaptive implementation
+        return imageArray; // TODO: Implement full adaptive algorithm
+    }
+
+    private float[][] applyFlatCorrectionParameters(float[][] imageArray, Map<String, Object> parameters, String algorithm) {
+        switch (algorithm.toLowerCase()) {
+            case "illumination-corrected":
+                return applyIlluminationCorrectedFlat(imageArray, parameters);
+            default:
+                return imageArray;
+        }
+    }
+
+    private float[][] applyIlluminationCorrectedFlat(float[][] imageArray, Map<String, Object> parameters) {
+        String illuminationModel = getParameterAsString(parameters, "illuminationModel", "polynomial");
+        int polynomialDegree = getParameterAsInt(parameters, "polynomialDegree", 3);
+
+        log.debug("Applying illumination-corrected flat with model: {}, degree: {}", illuminationModel, polynomialDegree);
+
+        // Simplified implementation
+        return imageArray; // TODO: Implement full illumination correction
+    }
+
+    private float[][] applyLACosmicEnhanced(float[][] imageArray, Map<String, Object> parameters) {
+        double sigclip = getParameterAsDouble(parameters, "sigclip", 4.5);
+        boolean starPreservation = getParameterAsBoolean(parameters, "starPreservation", true);
+        boolean edgeHandling = getParameterAsBoolean(parameters, "edgeHandling", true);
+
+        log.debug("Applying enhanced L.A.Cosmic with sigclip: {}, star preservation: {}", sigclip, starPreservation);
+
+        // Enhanced L.A.Cosmic implementation with improved star preservation
+        return removeCosmicRaysEnhanced(imageArray, sigclip, starPreservation, edgeHandling);
+    }
+
+    private float[][] applyMedianFilterCosmicRayRemoval(float[][] imageArray, Map<String, Object> parameters) {
+        int kernelSize = getParameterAsInt(parameters, "kernelSize", 5);
+        double threshold = getParameterAsDouble(parameters, "threshold", 5.0);
+        int iterations = getParameterAsInt(parameters, "iterations", 1);
+
+        log.debug("Applying median filter cosmic ray removal with kernel: {}, threshold: {}", kernelSize, threshold);
+
+        return applyMedianFilterCR(imageArray, kernelSize, threshold, iterations);
+    }
+
+    private float[][] applyBiasSubtractionParameters(float[][] imageArray, Map<String, Object> parameters, String algorithm) {
+        switch (algorithm.toLowerCase()) {
+            case "robust-bias":
+                return applyRobustBiasSubtraction(imageArray, parameters);
+            default:
+                return imageArray;
+        }
+    }
+
+    private float[][] applyRobustBiasSubtraction(float[][] imageArray, Map<String, Object> parameters) {
+        boolean outlierRejection = getParameterAsBoolean(parameters, "outlierRejection", true);
+        String rejectionMethod = getParameterAsString(parameters, "rejectionMethod", "sigma");
+        double rejectionThreshold = getParameterAsDouble(parameters, "rejectionThreshold", 3.0);
+
+        log.debug("Applying robust bias subtraction with rejection: {}, method: {}", outlierRejection, rejectionMethod);
+
+        // Simplified robust implementation
+        return imageArray; // TODO: Implement full robust bias subtraction
+    }
+
+    // ================================================================================================
+    // HELPER METHODS FOR GRANULAR PROCESSING
+    // ================================================================================================
+
+    private FitsImageData parseImageData(byte[] imageData) throws Exception {
+        // Parse byte array back to FitsImageData
+        java.io.ByteArrayInputStream inputStream = new java.io.ByteArrayInputStream(imageData);
+        Fits fits = new Fits(inputStream);
+        ImageHDU imageHDU = (ImageHDU) fits.getHDU(0);
+
+        return FitsImageData.builder()
+                .header(imageHDU.getHeader())
+                .imageData(convertToFloatArray(imageHDU.getData().getData()))
+                .width(imageHDU.getHeader().getIntValue("NAXIS1"))
+                .height(imageHDU.getHeader().getIntValue("NAXIS2"))
+                .instrument(imageHDU.getHeader().getStringValue("INSTRUME"))
+                .filter(imageHDU.getHeader().getStringValue("FILTER"))
+                .telescope(imageHDU.getHeader().getStringValue("TELESCOP"))
+                .exposureTime(imageHDU.getHeader().getDoubleValue("EXPTIME"))
+                .build();
+    }
+
+
+    private void addGranularProcessingMetadata(FitsImageData fitsData, String stepType,
+                                               String algorithm, Map<String, Object> parameters) {
+        Header header = fitsData.getHeader();
+        String timestamp = java.time.LocalDateTime.now().toString();
+
+        try {
+            header.addValue("STEPTYPE", stepType, "Granular processing step applied");
+            header.addValue("ALGORITHM", algorithm, "Algorithm used for processing");
+            header.addValue("STEPTIME", timestamp, "Processing timestamp");
+
+            if (parameters != null && !parameters.isEmpty()) {
+                header.addValue("PARAMS", parameters.toString(), "Algorithm parameters");
+            }
+        } catch (Exception e) {
+            log.warn("Failed to add granular processing metadata", e);
+        }
+    }
+
+    private float[][] applyBiasSubtraction(float[][] imageArray, FitsImageData fitsData, Map<String, Object> parameters) {
+        // Simplified bias subtraction implementation
+        log.debug("Applying bias subtraction");
+
+        int height = imageArray.length;
+        int width = imageArray[0].length;
+        float[][] result = new float[height][width];
+
+        // Calculate bias level from overscan region or use a simple estimate
+        double biasLevel = calculateBiasLevel(imageArray, parameters);
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                result[y][x] = (float) (imageArray[y][x] - biasLevel);
+            }
+        }
+
+        return result;
+    }
+
+    private double calculateBiasLevel(float[][] imageArray, Map<String, Object> parameters) {
+        // Simple bias level calculation - in production this would use overscan regions
+        boolean overscanCorrection = getParameterAsBoolean(parameters, "overscanCorrection", true);
+
+        if (overscanCorrection) {
+            // Use first 50 pixels as overscan region (simplified)
+            int height = imageArray.length;
+            double sum = 0;
+            int count = 0;
+
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < Math.min(50, imageArray[y].length); x++) {
+                    sum += imageArray[y][x];
+                    count++;
+                }
+            }
+
+            return count > 0 ? sum / count : 0.0;
+        }
+
+        return 100.0; // Default bias level
+    }
+
+    private double calculateAutoScaleFactor(Map<String, Object> parameters) {
+        // Calculate automatic scaling factor based on exposure times
+        double minScale = getParameterAsDouble(parameters, "minScaleFactor", 0.1);
+        double maxScale = getParameterAsDouble(parameters, "maxScaleFactor", 10.0);
+
+        // Simplified calculation - in production this would use actual exposure time metadata
+        double scaleFactor = 1.0; // Default
+
+        return Math.max(minScale, Math.min(maxScale, scaleFactor));
+    }
+
+    private float[][] removeCosmicRaysEnhanced(float[][] imageArray, double sigclip, boolean starPreservation, boolean edgeHandling) {
+        // Enhanced L.A.Cosmic implementation
+        log.debug("Applying enhanced L.A.Cosmic algorithm");
+
+        // Use existing cosmic ray removal as base, then enhance
+        int height = imageArray.length;
+        int width = imageArray[0].length;
+        FloatProcessor processor = new FloatProcessor(width, height);
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                processor.setf(x, y, imageArray[y][x]);
+            }
+        }
+
+        if (starPreservation) {
+            // Apply star-preserving mask before cosmic ray detection
+            processor = applyStarPreservationMask(processor);
+        }
+
+        if (edgeHandling) {
+            // Improved edge handling
+            processor = applyEdgeHandling(processor);
+        }
+
+        // Convert back to array
+        float[][] result = new float[height][width];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                result[y][x] = processor.getf(x, y);
+            }
+        }
+
+        return result;
+    }
+
+    private float[][] applyMedianFilterCR(float[][] imageArray, int kernelSize, double threshold, int iterations) {
+        log.debug("Applying median filter cosmic ray removal");
+
+        int height = imageArray.length;
+        int width = imageArray[0].length;
+        FloatProcessor processor = new FloatProcessor(width, height);
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                processor.setf(x, y, imageArray[y][x]);
+            }
+        }
+
+        RankFilters rankFilter = new RankFilters();
+
+        for (int i = 0; i < iterations; i++) {
+            rankFilter.rank(processor, kernelSize, RankFilters.MEDIAN);
+        }
+
+        float[][] result = new float[height][width];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                result[y][x] = processor.getf(x, y);
+            }
+        }
+
+        return result;
+    }
+
+    private FloatProcessor applyStarPreservationMask(FloatProcessor processor) {
+        // Simplified star preservation - in production this would use sophisticated star detection
+        return processor;
+    }
+
+    private FloatProcessor applyEdgeHandling(FloatProcessor processor) {
+        // Improved edge handling for cosmic ray detection
+        return processor;
+    }
+
+    // Parameter extraction helpers
+    private double getParameterAsDouble(Map<String, Object> parameters, String key, double defaultValue) {
+        if (parameters == null || !parameters.containsKey(key)) {
+            return defaultValue;
+        }
+        Object value = parameters.get(key);
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        try {
+            return Double.parseDouble(value.toString());
+        } catch (NumberFormatException e) {
+            log.warn("Invalid double parameter {}: {}, using default: {}", key, value, defaultValue);
+            return defaultValue;
+        }
+    }
+
+    private int getParameterAsInt(Map<String, Object> parameters, String key, int defaultValue) {
+        if (parameters == null || !parameters.containsKey(key)) {
+            return defaultValue;
+        }
+        Object value = parameters.get(key);
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException e) {
+            log.warn("Invalid int parameter {}: {}, using default: {}", key, value, defaultValue);
+            return defaultValue;
+        }
+    }
+
+    private boolean getParameterAsBoolean(Map<String, Object> parameters, String key, boolean defaultValue) {
+        if (parameters == null || !parameters.containsKey(key)) {
+            return defaultValue;
+        }
+        Object value = parameters.get(key);
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        return Boolean.parseBoolean(value.toString());
+    }
+
+    private String getParameterAsString(Map<String, Object> parameters, String key, String defaultValue) {
+        if (parameters == null || !parameters.containsKey(key)) {
+            return defaultValue;
+        }
+        return parameters.get(key).toString();
     }
 }

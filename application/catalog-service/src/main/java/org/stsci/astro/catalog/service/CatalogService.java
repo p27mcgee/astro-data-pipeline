@@ -71,8 +71,8 @@ public class CatalogService {
                             .build();
                 })
                 .filter(match -> match.getSeparationArcsec() <= request.getRadiusArcsec())
-                .filter(match -> request.getObjectTypes() == null || 
-                        request.getObjectTypes().contains(match.getObject().getObjectType()))
+                .filter(match -> request.getObjectTypes() == null ||
+                        request.getObjectTypes().contains(match.getObject().getObjectType().name()))
                 .filter(match -> request.getMinMagnitude() == null || 
                         (match.getObject().getMagnitude() != null && 
                          match.getObject().getMagnitude() >= request.getMinMagnitude()))
@@ -83,12 +83,18 @@ public class CatalogService {
                 .limit(request.getMaxResults() != null ? request.getMaxResults() : 1000)
                 .collect(Collectors.toList());
 
+        // Extract objects from matches for backward compatibility
+        List<AstronomicalObject> resultObjects = matches.stream()
+                .map(ConeSearchResult.ObjectMatch::getObject)
+                .collect(Collectors.toList());
+
         return ConeSearchResult.builder()
-                .centerRa(request.getCenterRa())
-                .centerDec(request.getCenterDec())
-                .searchRadiusArcsec(request.getRadiusArcsec())
-                .totalMatches(matches.size())
+                .searchRequest(request)
+                .objects(resultObjects)
                 .matches(matches)
+                .totalResults(matches.size())
+                .returnedResults(matches.size())
+                .hasMoreResults(false)
                 .searchTimestamp(LocalDateTime.now())
                 .build();
     }
@@ -105,7 +111,7 @@ public class CatalogService {
         double radiusMeters = maxSeparationArcsec * ARCSEC_TO_DEGREES * DEGREES_TO_METERS;
         
         List<Object[]> results = objectRepository.findNearestObjectsOfType(
-                ra, dec, radiusMeters, objectType.name(), 1
+                ra, dec, radiusMeters, objectType != null ? objectType.name() : null, 1
         );
 
         if (results.isEmpty()) {

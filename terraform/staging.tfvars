@@ -104,6 +104,24 @@ s3_buckets = {
       }
     ]
   }
+  intermediate-data = {
+    versioning_enabled = true # Enable versioning for experiment tracking
+    lifecycle_rules = [
+      {
+        id     = "research_intermediate_cleanup"
+        status = "Enabled"
+        transitions = [
+          {
+            days          = 30 # AWS minimum for STANDARD_IA
+            storage_class = "STANDARD_IA"
+          }
+        ]
+        expiration = {
+          days = 45 # Cleanup after transition period
+        }
+      }
+    ]
+  }
   archive = {
     versioning_enabled = false
     lifecycle_rules = [

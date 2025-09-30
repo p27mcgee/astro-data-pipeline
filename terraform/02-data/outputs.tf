@@ -34,6 +34,17 @@ output "lambda_function_name" {
   value       = aws_lambda_function.s3_trigger.function_name
 }
 
+# Specific bucket outputs for application integration
+output "intermediate_bucket_name" {
+  description = "Name of the intermediate data bucket for research workflows"
+  value       = try(aws_s3_bucket.data_buckets["intermediate-data"].id, null)
+}
+
+output "intermediate_bucket_arn" {
+  description = "ARN of the intermediate data bucket for research workflows"
+  value       = try(aws_s3_bucket.data_buckets["intermediate-data"].arn, null)
+}
+
 # KMS Outputs
 output "s3_kms_key_arn" {
   description = "ARN of the S3 KMS key"

@@ -6,6 +6,11 @@ on:
     paths:
       - 'terraform/**'
       - '.github/workflows/terraform-infrastructure.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-infrastructure.yml'
   workflow_dispatch:
     inputs:
       action:
@@ -529,6 +534,113 @@ jobs:
       with:
         name: terraform-outputs-${{ inputs.environment }}-layered
         path: terraform/combined-outputs-${{ inputs.environment }}.json
+
+  terraform-apply-main:
+    name: Terraform Apply (Main Branch)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: staging
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # AWS Role Trusts GitHub OIDC identity provider
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
+          role-session-name: GitHubActions-Terraform-Apply-Main
+          aws-region: ${{ env.AWS_REGION }}
+          # Explicit OIDC configuration
+          audience: sts.amazonaws.com
+          output-env-credentials: true
+
+      - name: Terraform Plan - Staging Environment
+        id: tf-plan-main
+        env:
+          LAST_LAYER: ${{ env.DEFAULT_LAST_LAYER }}
+          ENVIRONMENT: 'staging'
+        run: |
+          cd terraform
+          # Use the layered deployment script for planning
+          chmod +x ci/deploy-layers.sh
+          export exitcode=0
+          ./ci/deploy-layers.sh ${ENVIRONMENT}.tfvars plan $LAST_LAYER || export exitcode=$?
+          
+          echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
+          
+          if [ $exitcode -eq 1 ]; then
+            echo "Terraform Plan Failed"
+            exit 1
+          elif [ $exitcode -eq 0 ]; then
+            echo "Terraform Plan Succeeded"
+          else
+            echo "Terraform Plan Completed with exit code: $exitcode"
+          fi
+
+      - name: Terraform Apply - Staging Environment
+        if: steps.tf-plan-main.outputs.exitcode == 0
+        env:
+          LAST_LAYER: ${{ env.DEFAULT_LAST_LAYER }}
+          ENVIRONMENT: 'staging'
+        run: |
+          cd terraform
+          # Use the layered deployment script for applying
+          chmod +x ci/deploy-layers.sh
+          ./ci/deploy-layers.sh ${ENVIRONMENT}.tfvars apply $LAST_LAYER
+
+      - name: Terraform Output - Staging Environment
+        if: steps.tf-plan-main.outputs.exitcode == 0
+        env:
+          ENVIRONMENT: 'staging'
+        run: |
+          cd terraform
+          echo "## Terraform Apply Results (Staging) - Main Branch" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🚀 Infrastructure successfully applied to staging environment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration:" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: Staging" >> $GITHUB_STEP_SUMMARY
+          echo "- Triggered by: PR merge to main" >> $GITHUB_STEP_SUMMARY
+          echo "- Actor: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Last layer processed: ${{ env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Export Combined Terraform Outputs - Staging
+        if: steps.tf-plan-main.outputs.exitcode == 0
+        env:
+          ENVIRONMENT: 'staging'
+        run: |
+          cd terraform
+          # Export outputs from all layers into a combined JSON
+          echo '{}' > combined-outputs-${ENVIRONMENT}.json
+          for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+            echo "Collecting outputs from layer: $layer"
+            if [ -f "$layer/terraform.tfstate" ]; then
+              cd $layer
+              terraform output -json >> ../combined-outputs-${ENVIRONMENT}.json || echo "No outputs from $layer"
+              cd ..
+            fi
+          done
+
+      - name: Upload Combined Terraform Outputs - Staging
+        if: steps.tf-plan-main.outputs.exitcode == 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-outputs-staging-main
+          path: terraform/combined-outputs-staging.json
 
   # FIXME
   #    - name: Notify Staging Deployment
