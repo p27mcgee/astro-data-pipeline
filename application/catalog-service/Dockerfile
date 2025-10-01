@@ -18,6 +18,7 @@ COPY gradle gradle
 COPY settings.gradle .
 COPY build.gradle .
 COPY gradle.properties .
+COPY config config
 
 # Copy subproject build files
 COPY catalog-service/build.gradle catalog-service/
@@ -33,9 +34,6 @@ COPY catalog-service/src catalog-service/src
 
 # Build application
 RUN ./gradlew :catalog-service:clean :catalog-service:build -x test --no-daemon
-
-# Extract layers for better caching
-RUN mkdir -p build/dependency && (cd build/dependency; jar -xf ../../catalog-service/build/libs/*.jar)
 
 # Production stage
 FROM eclipse-temurin:17-jre-jammy
@@ -54,10 +52,8 @@ RUN groupadd -r astro && useradd -r -g astro astro
 # Set up application directory
 WORKDIR /app
 
-# Copy application layers from builder stage
-COPY --from=builder --chown=astro:astro /workspace/app/build/dependency/BOOT-INF/lib lib
-COPY --from=builder --chown=astro:astro /workspace/app/build/dependency/META-INF META-INF
-COPY --from=builder --chown=astro:astro /workspace/app/build/dependency/BOOT-INF/classes .
+# Copy JAR file directly
+COPY --from=builder --chown=astro:astro /workspace/app/catalog-service/build/libs/catalog-service-*.jar app.jar
 
 # Create logs directory
 RUN mkdir -p /app/logs && chown astro:astro /app/logs
@@ -81,7 +77,7 @@ EXPOSE 8080
 ENTRYPOINT ["dumb-init", "--"]
 
 # Run application
-CMD ["sh", "-c", "java $JAVA_OPTS -cp /app org.stsci.astro.catalog.CatalogServiceApplication"]
+CMD ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
 
 # Metadata
 LABEL maintainer="STScI Demo Project" \
