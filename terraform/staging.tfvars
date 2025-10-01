@@ -13,7 +13,7 @@
 aws_region             = "us-east-1"
 environment            = "staging"
 project_name           = "astro-data-pipeline"
-infrastructure_version = "1.0.1-alpha.1"
+infrastructure_version = "0.6.0"
 
 # VPC Configuration - Single-AZ setup for cost optimization
 vpc_cidr              = "10.0.0.0/16"
