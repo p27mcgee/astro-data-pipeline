@@ -1,5 +1,5 @@
 # Multi-stage build for optimal image size and security
-FROM openjdk:17-jdk-slim as builder
+FROM eclipse-temurin:17-jdk-jammy AS builder
 
 # Install build dependencies
 RUN apt-get update && \
@@ -15,26 +15,30 @@ WORKDIR /workspace/app
 # Copy gradle wrapper and build files
 COPY gradlew .
 COPY gradle gradle
-COPY build.gradle .
 COPY settings.gradle .
+COPY build.gradle .
+COPY gradle.properties .
+
+# Copy subproject build files
+COPY catalog-service/build.gradle catalog-service/
 
 # Make gradlew executable
 RUN chmod +x ./gradlew
 
 # Download dependencies (layer caching optimization)
-RUN ./gradlew dependencies --no-daemon
+RUN ./gradlew :catalog-service:dependencies --no-daemon
 
 # Copy source code
-COPY src src
+COPY catalog-service/src catalog-service/src
 
 # Build application
-RUN ./gradlew clean build -x test --no-daemon
+RUN ./gradlew :catalog-service:clean :catalog-service:build -x test --no-daemon
 
 # Extract layers for better caching
-RUN mkdir -p build/dependency && (cd build/dependency; jar -xf ../libs/*.jar)
+RUN mkdir -p build/dependency && (cd build/dependency; jar -xf ../../catalog-service/build/libs/*.jar)
 
 # Production stage
-FROM openjdk:17-jre-slim
+FROM eclipse-temurin:17-jre-jammy
 
 # Install runtime dependencies
 RUN apt-get update && \

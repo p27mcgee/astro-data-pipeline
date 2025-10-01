@@ -278,7 +278,7 @@ jobs:
       - name: Build Image Processor Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./application/image-processor
+          context: ./application
           file: ./application/image-processor/Dockerfile
           push: false
           tags: |
@@ -294,7 +294,7 @@ jobs:
       - name: Build Catalog Service Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./application/catalog-service
+          context: ./application
           file: ./application/catalog-service/Dockerfile
           push: false
           tags: |
@@ -368,7 +368,7 @@ jobs:
       - name: Build and push Image Processor Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./application/image-processor
+          context: ./application
           file: ./application/image-processor/Dockerfile
           push: true
           tags: |
@@ -384,7 +384,7 @@ jobs:
       - name: Build and push Catalog Service Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./application/catalog-service
+          context: ./application
           file: ./application/catalog-service/Dockerfile
           push: true
           tags: |
