@@ -66,8 +66,9 @@ jobs:
         # Get version from main branch
         git fetch origin main
         git checkout origin/main -- terraform/staging.tfvars
-        MAIN_VERSION=$(grep '^infrastructure_version = ' terraform/staging.tfvars | sed 's/.*= "\(.*\)"/\1/')
-        git checkout - -- terraform/staging.tfvars
+        MAIN_VERSION=$(grep --no-messages '^infrastructure_version = ' terraform/staging.tfvars | sed 's/.*= "\(.*\)"/\1/')
+        if [[ -z "$MAIN_VERSION" ]]; then MAIN_VERSION="0.0.0-alpha.0"; fi
+        git checkout HEAD -- terraform/staging.tfvars
 
         echo "Current PR terraform version: $TERRAFORM_VERSION"
         echo "Main branch terraform version: $MAIN_VERSION"

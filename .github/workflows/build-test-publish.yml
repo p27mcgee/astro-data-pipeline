@@ -53,8 +53,8 @@ jobs:
         id: extract-version
         run: |
           cd application
-          APP_VERSION=$(grep '^version=' gradle.properties | cut -d'=' -f2)
-
+          APP_VERSION=$(grep --no-messages '^version=' gradle.properties | cut -d'=' -f2)
+          if [[ -z "$APP_VERSION" ]]; then APP_VERSION="0.0.0-alpha.0"; fi
           # Check if it's a pre-release version
           if [[ "$APP_VERSION" == *"-alpha"* ]] || [[ "$APP_VERSION" == *"-beta"* ]] || [[ "$APP_VERSION" == *"-rc"* ]]; then
             IS_PRERELEASE="true"
@@ -76,7 +76,7 @@ jobs:
           git fetch origin main
           git checkout origin/main -- application/gradle.properties
           MAIN_VERSION=$(grep '^version=' application/gradle.properties | cut -d'=' -f2)
-          git checkout - -- application/gradle.properties
+          git checkout HEAD -- application/gradle.properties
 
           echo "Current PR version: $APP_VERSION"
           echo "Main branch version: $MAIN_VERSION"
