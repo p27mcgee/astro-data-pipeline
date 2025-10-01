@@ -1,5 +1,10 @@
 name: Terraform Infrastructure
 
+# This workflow runs in two scenarios:
+# 1. On PR/push to validate and plan terraform changes
+# 2. After 'Build Test Publish' workflow completes successfully on main branch
+#    (ensures Docker images are published before infrastructure deployment)
+
 on:
   pull_request:
     branches: [ main, develop ]
@@ -11,6 +16,11 @@ on:
     paths:
       - 'terraform/**'
       - '.github/workflows/terraform-infrastructure.yml'
+  workflow_run:
+    workflows: [ "Build Test Publish" ]
+    types:
+      - completed
+    branches: [ main ]
 
 env:
   TF_VERSION: '1.13.3'
@@ -360,7 +370,14 @@ jobs:
     name: Terraform Apply
     runs-on: ubuntu-latest
     needs: [ terraform-validate, terraform-plan ]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.terraform-plan.outputs.tfplanExitCode == '0' && needs.terraform-validate.outputs.is-prerelease == 'false'
+    if: |
+      github.ref == 'refs/heads/main' &&
+      needs.terraform-plan.outputs.tfplanExitCode == '0' &&
+      needs.terraform-validate.outputs.is-prerelease == 'false' &&
+      (
+        (github.event_name == 'push') ||
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      )
     environment:
       name: staging
       url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -449,7 +466,14 @@ jobs:
     name: Infrastructure Deployment Skipped (Pre-release)
     runs-on: ubuntu-latest
     needs: [ terraform-validate, terraform-plan ]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.terraform-plan.outputs.tfplanExitCode == '0' && needs.terraform-validate.outputs.is-prerelease == 'true'
+    if: |
+      github.ref == 'refs/heads/main' &&
+      needs.terraform-plan.outputs.tfplanExitCode == '0' &&
+      needs.terraform-validate.outputs.is-prerelease == 'true' &&
+      (
+        (github.event_name == 'push') ||
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      )
 
     env:
       TERRAFORM_VERSION: ${{ needs.terraform-validate.outputs.terraform-version }}
