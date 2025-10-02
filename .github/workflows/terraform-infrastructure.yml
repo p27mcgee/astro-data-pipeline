@@ -11,11 +11,6 @@ on:
     paths:
       - 'terraform/**'
       - '.github/workflows/terraform-infrastructure.yml'
-  push:
-    branches: [ main ]
-    paths:
-      - 'terraform/**'
-      - '.github/workflows/terraform-infrastructure.yml'
   workflow_run:
     workflows: [ "Build Test Publish" ]
     types:
