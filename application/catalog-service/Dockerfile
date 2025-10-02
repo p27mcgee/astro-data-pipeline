@@ -21,19 +21,19 @@ COPY gradle.properties .
 COPY config config
 
 # Copy subproject build files
-COPY image-processor/build.gradle image-processor/
+COPY catalog-service/build.gradle catalog-service/
 
 # Make gradlew executable
 RUN chmod +x ./gradlew
 
 # Download dependencies (layer caching optimization)
-RUN ./gradlew :image-processor:dependencies --no-daemon
+RUN ./gradlew :catalog-service:dependencies --no-daemon
 
 # Copy source code
-COPY image-processor/src image-processor/src
+COPY catalog-service/src catalog-service/src
 
 # Build application
-RUN ./gradlew :image-processor:clean :image-processor:build -x test --no-daemon
+RUN ./gradlew :catalog-service:clean :catalog-service:build -x test --no-daemon
 
 # Production stage
 FROM eclipse-temurin:17-jre-jammy
@@ -53,7 +53,7 @@ RUN groupadd -r astro && useradd -r -g astro astro
 WORKDIR /app
 
 # Copy JAR file directly
-COPY --from=builder --chown=astro:astro /workspace/app/image-processor/build/libs/image-processor-*.jar app.jar
+COPY --from=builder --chown=astro:astro /workspace/app/catalog-service/build/libs/catalog-service-*.jar app.jar
 
 # Create logs directory
 RUN mkdir -p /app/logs && chown astro:astro /app/logs
@@ -82,9 +82,9 @@ CMD ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
 # Metadata
 LABEL maintainer="STScI Demo Project" \
       version="1.0.0" \
-      description="Astronomical Image Processing Microservice" \
-      org.opencontainers.image.title="Astro Image Processor" \
-      org.opencontainers.image.description="Spring Boot microservice for processing astronomical FITS images" \
+      description="Astronomical Catalog Management Microservice" \
+      org.opencontainers.image.title="Astro Catalog Service" \
+      org.opencontainers.image.description="Spring Boot microservice for managing astronomical object catalogs" \
       org.opencontainers.image.version="1.0.0" \
       org.opencontainers.image.vendor="STScI Demo" \
       org.opencontainers.image.licenses="MIT"

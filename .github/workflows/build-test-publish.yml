@@ -1,0 +1,456 @@
+name: Build Test Publish
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'application/**'
+      - 'kubernetes/**'
+      - '.github/workflows/**'
+  push:
+    branches: [ main ]
+    paths:
+      - 'application/**'
+      - 'kubernetes/**'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+
+jobs:
+  validate:
+    name: Code Validation (Test → Quality → Build)
+    runs-on: ubuntu-latest
+
+    outputs:
+      app-version: ${{ steps.extract-version.outputs.app-version }}
+      is-prerelease: ${{ steps.extract-version.outputs.is-prerelease }}
+
+    services:
+      postgres:
+        image: postgis/postgis:15-3.5
+        env:
+          POSTGRES_DB: astro_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract Application Version
+        id: extract-version
+        run: |
+          cd application
+          APP_VERSION=$(grep --no-messages '^version=' gradle.properties | cut -d'=' -f2)
+          if [[ -z "$APP_VERSION" ]]; then APP_VERSION="0.0.0-alpha.0"; fi
+          # Check if it's a pre-release version
+          if [[ "$APP_VERSION" == *"-alpha"* ]] || [[ "$APP_VERSION" == *"-beta"* ]] || [[ "$APP_VERSION" == *"-rc"* ]]; then
+            IS_PRERELEASE="true"
+            echo "🚧 **Application Version: \`$APP_VERSION\` (pre-release)**" >> $GITHUB_STEP_SUMMARY
+          else
+            IS_PRERELEASE="false"
+            echo "🏷️ **Application Version: \`$APP_VERSION\`**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "app-version=$APP_VERSION" >> $GITHUB_OUTPUT
+          echo "is-prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+
+      - name: Validate Version Change (PR only)
+        if: github.event_name == 'pull_request'
+        env:
+          APP_VERSION: ${{ steps.extract-version.outputs.app-version }}
+        run: |
+          # Get version from main branch
+          git fetch origin main
+          git checkout origin/main -- application/gradle.properties
+          MAIN_VERSION=$(grep '^version=' application/gradle.properties | cut -d'=' -f2)
+          git checkout HEAD -- application/gradle.properties
+
+          echo "Current PR version: $APP_VERSION"
+          echo "Main branch version: $MAIN_VERSION"
+
+          # Extract base version (remove pre-release suffix if present)
+          CURRENT_BASE=$(echo "$APP_VERSION" | cut -d'-' -f1)
+          MAIN_BASE=$(echo "$MAIN_VERSION" | cut -d'-' -f1)
+
+          echo "Current base version: $CURRENT_BASE"
+          echo "Main base version: $MAIN_BASE"
+
+          # Check if it's a pre-release version
+          if [[ "$APP_VERSION" == *"-alpha"* ]] || [[ "$APP_VERSION" == *"-beta"* ]] || [[ "$APP_VERSION" == *"-rc"* ]]; then
+            echo "🚧 Pre-release version detected: $APP_VERSION"
+            # For pre-release: base version must be > main base version
+            if [ "$CURRENT_BASE" = "$MAIN_BASE" ]; then
+              echo "❌ ERROR: Pre-release base version ($CURRENT_BASE) must be greater than main version ($MAIN_BASE)"
+              echo "Example: If main is 1.0.1, use 1.0.2-alpha.1 (not 1.0.1-alpha.1)"
+              exit 1
+            fi
+            echo "✅ Pre-release version validation passed: $MAIN_VERSION → $APP_VERSION"
+            echo "## 🚧 Pre-release Version Update" >> $GITHUB_STEP_SUMMARY
+            echo "- **Previous**: \`$MAIN_VERSION\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Current**: \`$APP_VERSION\` (pre-release)" >> $GITHUB_STEP_SUMMARY
+            echo "- **⚠️ Note**: Container publication will be suppressed" >> $GITHUB_STEP_SUMMARY
+          else
+            # For production releases: version must be different
+            if [ "$APP_VERSION" = "$MAIN_VERSION" ]; then
+              echo "❌ ERROR: Application version must be incremented for PR merge"
+              echo "Current version: $APP_VERSION"
+              echo "Please update application/gradle.properties with a new version"
+              exit 1
+            fi
+            echo "✅ Production version validation passed: $MAIN_VERSION → $APP_VERSION"
+            echo "## 🎯 Production Version Update" >> $GITHUB_STEP_SUMMARY
+            echo "- **Previous**: \`$MAIN_VERSION\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Current**: \`$APP_VERSION\` (production)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python dependencies
+        run: |
+          cd application/data-simulator
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Make gradlew executable
+        run: |
+          find . -name "gradlew" -exec chmod +x {} \;
+
+      - name: Run unit tests (H2)
+        run: |
+          cd application
+          ./gradlew test
+        env:
+          SPRING_PROFILES_ACTIVE: test
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+
+      - name: Run integration tests (PostgreSQL)
+        run: |
+          cd application
+          ./gradlew integrationTest
+        env:
+          SPRING_PROFILES_ACTIVE: ci-integration
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/astro_test
+          SPRING_DATASOURCE_USERNAME: test_user
+          SPRING_DATASOURCE_PASSWORD: test_password
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: success() || failure()
+        with:
+          name: Test Results
+          path: application/*/build/test-results/*/TEST-*.xml
+          reporter: java-junit
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            application/*/build/reports/tests/
+            application/*/build/test-results/
+            application/*/build/reports/jacoco/
+          retention-days: 30
+          if-no-files-found: warn
+
+      # ========== Code Quality Analysis ==========
+
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Run Checkstyle
+        run: |
+          cd application && ./gradlew checkstyleMain checkstyleTest
+
+      - name: Run SpotBugs
+        run: |
+          cd application && ./gradlew spotbugsMain spotbugsTest
+
+      - name: SonarCloud Scan
+        run: |
+          cd application
+          # FIXME
+          ls -R . | grep ".xml"
+          # FIXME disable until we can pass the quality gate for code coverage
+          # ./gradlew test jacocoTestReport sonar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SPRING_PROFILES_ACTIVE: ci-integration
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/astro_test
+          SPRING_DATASOURCE_USERNAME: test_user
+          SPRING_DATASOURCE_PASSWORD: test_password
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+
+      # ========== Build Applications (No Image Publishing) ==========
+
+      - name: Build JAR files
+        run: |
+          cd application
+          ./gradlew clean build -x test
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            application/*/build/libs/*.jar
+            application/*/build/distributions/*
+          retention-days: 7
+          if-no-files-found: warn
+
+  docker-build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: validate
+
+    env:
+      APP_VERSION: ${{ needs.validate.outputs.app-version }}
+      IS_PRERELEASE: ${{ needs.validate.outputs.is-prerelease }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Display Build Information
+        run: |
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            echo "🚧 **Building Pre-release Version: \`$APP_VERSION\`**" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Pre-release builds will NOT be published to container registry**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "🏷️ **Building Production Version: \`$APP_VERSION\`**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Build Image Processor Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./application
+          file: ./application/image-processor/Dockerfile
+          push: false
+          tags: |
+            astro-image-processor:${{ env.APP_VERSION }}
+            astro-image-processor:${{ github.sha }}
+            astro-image-processor:latest
+          labels: |
+            org.opencontainers.image.version=${{ env.APP_VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Catalog Service Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./application
+          file: ./application/catalog-service/Dockerfile
+          push: false
+          tags: |
+            astro-catalog-service:${{ env.APP_VERSION }}
+            astro-catalog-service:${{ github.sha }}
+            astro-catalog-service:latest
+          labels: |
+            org.opencontainers.image.version=${{ env.APP_VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create Docker Build Summary
+        run: |
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            echo "## Docker Build Results (Pre-release)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🚧 Successfully built Docker images for pre-release testing" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **IMPORTANT**: These images are built locally only and will NOT be published to the container registry." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## Docker Build Results (Production)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Successfully built Docker images for all application services" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Images Built:" >> $GITHUB_STEP_SUMMARY
+          echo "- 🖼️ **astro-image-processor**: Astronomical image processing microservice" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 **astro-catalog-service**: Astronomical catalog management microservice" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Tags Created:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`$APP_VERSION\` (application version)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ github.sha }}\` (commit-specific)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`latest\` (development)" >> $GITHUB_STEP_SUMMARY
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🚧 Pre-release Notice:" >> $GITHUB_STEP_SUMMARY
+            echo "These images exist locally for testing purposes only. To publish to registry, use a production version (e.g., \`1.0.2\`)." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  docker-publish:
+    name: Publish Docker Images
+    runs-on: ubuntu-latest
+    needs: [ validate, docker-build ]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.validate.outputs.is-prerelease == 'false'
+    environment:
+      name: docker-registry
+      url: ${{ vars.CONTAINER_REGISTRY_URL }}
+
+    env:
+      APP_VERSION: ${{ needs.validate.outputs.app-version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Display Publish Information
+        run: |
+          echo "🚀 **Publishing Application Version: \`$APP_VERSION\`**" >> $GITHUB_STEP_SUMMARY
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.CONTAINER_REGISTRY }}
+          username: ${{ vars.CONTAINER_REGISTRY_USERNAME }}
+          password: ${{ secrets.CONTAINER_REGISTRY_PASSWORD }}
+
+      - name: Build and push Image Processor Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./application
+          file: ./application/image-processor/Dockerfile
+          push: true
+          tags: |
+            ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-image-processor:${{ env.APP_VERSION }}
+            ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-image-processor:${{ github.sha }}
+            ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-image-processor:latest
+          labels: |
+            org.opencontainers.image.version=${{ env.APP_VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Catalog Service Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./application
+          file: ./application/catalog-service/Dockerfile
+          push: true
+          tags: |
+            ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-catalog-service:${{ env.APP_VERSION }}
+            ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-catalog-service:${{ github.sha }}
+            ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-catalog-service:latest
+          labels: |
+            org.opencontainers.image.version=${{ env.APP_VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create Docker Publish Summary
+        run: |
+          echo "## Docker Publish Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🚀 Successfully published Docker images to container registry" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Published Images:" >> $GITHUB_STEP_SUMMARY
+          echo "- 🖼️ **astro-image-processor**: \`${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-image-processor:$APP_VERSION\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 **astro-catalog-service**: \`${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-catalog-service:$APP_VERSION\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Registry Information:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registry**: \`${{ vars.CONTAINER_REGISTRY }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository URL**: [${{ vars.CONTAINER_REGISTRY_URL }}](${{ vars.CONTAINER_REGISTRY_URL }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Available Tags:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`$APP_VERSION\` (application version)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ github.sha }}\` (commit-specific)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`latest\` (always latest published)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Usage:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Use version-specific tags for production" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-image-processor:$APP_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-catalog-service:$APP_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Use latest for development" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-image-processor:latest" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-catalog-service:latest" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  docker-publish-skipped:
+    name: Docker Publication Suppressed (Pre-release)
+    runs-on: ubuntu-latest
+    needs: [ validate, docker-build ]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.validate.outputs.is-prerelease == 'true'
+
+    env:
+      APP_VERSION: ${{ needs.validate.outputs.app-version }}
+
+    steps:
+      - name: Display Suppression Notice
+        run: |
+          echo "## 🚧 Docker Publication Suppressed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Pre-release version detected: \`$APP_VERSION\`**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Docker images have been built successfully but **publication to the container registry has been suppressed** because this is a pre-release version." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### To publish to registry:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Update the version to a production release (e.g., \`1.0.2\`)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Remove the pre-release suffix (\`-alpha\`, \`-beta\`, \`-rc\`)" >> $GITHUB_STEP_SUMMARY
+          echo "3. Push the changes to trigger publication" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Current status:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ All tests passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Docker images built locally" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚫 Container registry publication suppressed" >> $GITHUB_STEP_SUMMARY

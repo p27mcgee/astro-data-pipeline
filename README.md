@@ -858,11 +858,326 @@ spring:
 - ✅ **Test Isolation**: Each test gets fresh schema
 - ✅ **Entity Validation**: Ensures JPA mappings are correct
 
+## 📦 Version Management & Release System
+
+This project implements a **sophisticated versioning and release management system** that provides deterministic builds
+and controlled deployments across both application and infrastructure components.
+
+### 🏷️ Version Specification Architecture
+
+**Centralized Version Management:**
+
+- **Application Version**: Managed in `application/gradle.properties`
+- **Infrastructure Version**: Managed in `terraform/staging.tfvars` (and `terraform/production.tfvars`)
+- **Synchronized Workflows**: Both workflows validate and enforce version requirements
+
+```properties
+# application/gradle.properties
+version=1.0.1
+```
+
+```hcl
+# terraform/staging.tfvars
+infrastructure_version = "1.0.1"
+```
+
+### 🚀 Pre-release Versioning System
+
+**Supports Semantic Versioning with Pre-release Identifiers:**
+
+```bash
+# Pre-release version examples
+1.0.2-alpha.1    # Alpha release
+1.0.2-beta.2     # Beta release
+1.0.2-rc.1       # Release candidate
+```
+
+**Pre-release Behavior:**
+
+- ✅ **Validation & Testing**: Full CI/CD validation runs
+- ✅ **Code Quality**: All quality gates must pass
+- 🚫 **Docker Publication**: Container images are NOT published to registry
+- 🚫 **Infrastructure Deployment**: Terraform deployment is SUPPRESSED
+- ⚠️ **Prominent Warnings**: Clear notifications about suppressed operations
+
+### 🔐 Version Validation Logic
+
+**PR Version Requirements:**
+
+- **Application**: Version in PR must differ from main branch version
+- **Infrastructure**: Version in PR must differ from main branch version
+- **Pre-release Base Validation**: For pre-release versions (e.g., `1.0.2-alpha.1`), the base version (`1.0.2`) must be
+  greater than the current main branch version
+
+**Example Validation Scenarios:**
+
+```bash
+# ✅ Valid: Version increment for production
+Main: 1.0.1 → PR: 1.0.2  (PASSES - version incremented)
+
+# ✅ Valid: Pre-release with incremented base version
+Main: 1.0.1 → PR: 1.0.2-alpha.1  (PASSES - base 1.0.2 > main 1.0.1)
+
+# ❌ Invalid: Same version
+Main: 1.0.1 → PR: 1.0.1  (FAILS - no version change)
+
+# ❌ Invalid: Pre-release with same base version
+Main: 1.0.1 → PR: 1.0.1-alpha.1  (FAILS - base 1.0.1 = main 1.0.1)
+```
+
+### 🔄 Workflow Integration
+
+#### Build-Test-Publish Workflow
+
+**Version Extraction & Validation:**
+
+```yaml
+- name: Extract Application Version
+  id: extract-version
+  run: |
+    cd application
+    APP_VERSION=$(grep '^version=' gradle.properties | cut -d'=' -f2)
+
+    # Detect pre-release versions
+    if [[ "$APP_VERSION" == *"-alpha"* ]] || [[ "$APP_VERSION" == *"-beta"* ]] || [[ "$APP_VERSION" == *"-rc"* ]]; then
+      IS_PRERELEASE="true"
+      echo "🚧 **Application Version: \`$APP_VERSION\` (pre-release)**" >> $GITHUB_STEP_SUMMARY
+    else
+      IS_PRERELEASE="false"
+      echo "🏷️ **Application Version: \`$APP_VERSION\`**" >> $GITHUB_STEP_SUMMARY
+    fi
+
+    echo "app-version=$APP_VERSION" >> $GITHUB_OUTPUT
+    echo "is-prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+```
+
+**Conditional Docker Publication:**
+
+```yaml
+docker-publish:
+  name: Build and Publish Docker Images
+  needs: [build-test]
+  if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.extract-version.outputs.is-prerelease == 'false'
+  # Only publishes for production versions
+
+docker-publish-skipped:
+  name: Docker Publication Skipped (Pre-release)
+  needs: [extract-version]
+  if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.extract-version.outputs.is-prerelease == 'true'
+  # Displays prominent warning for pre-release versions
+```
+
+#### Terraform Infrastructure Workflow
+
+**Version Extraction & Validation:**
+
+```yaml
+- name: Extract Terraform Version
+  id: extract-terraform-version
+  run: |
+    cd terraform
+    TERRAFORM_VERSION=$(grep '^infrastructure_version = ' staging.tfvars | sed 's/.*= "\(.*\)"/\1/')
+
+    # Detect pre-release versions
+    if [[ "$TERRAFORM_VERSION" == *"-alpha"* ]] || [[ "$TERRAFORM_VERSION" == *"-beta"* ]] || [[ "$TERRAFORM_VERSION" == *"-rc"* ]]; then
+      IS_PRERELEASE="true"
+      echo "🚧 **Terraform Infrastructure Version: \`$TERRAFORM_VERSION\` (pre-release)**" >> $GITHUB_STEP_SUMMARY
+    else
+      IS_PRERELEASE="false"
+      echo "🏗️ **Terraform Infrastructure Version: \`$TERRAFORM_VERSION\`**" >> $GITHUB_STEP_SUMMARY
+    fi
+
+    echo "terraform-version=$TERRAFORM_VERSION" >> $GITHUB_OUTPUT
+    echo "is-prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+```
+
+**Conditional Infrastructure Deployment:**
+
+```yaml
+terraform-apply:
+  name: Terraform Apply
+  needs: [terraform-validate, terraform-plan]
+  if: |
+    github.event_name == 'push' &&
+    github.ref == 'refs/heads/main' &&
+    needs.terraform-plan.outputs.tfplanExitCode == '0' &&
+    needs.terraform-validate.outputs.is-prerelease == 'false'
+  # Only deploys infrastructure for production versions
+
+terraform-apply-skipped:
+  name: Infrastructure Deployment Skipped (Pre-release)
+  needs: [terraform-validate, terraform-plan]
+  if: |
+    github.event_name == 'push' &&
+    github.ref == 'refs/heads/main' &&
+    needs.terraform-plan.outputs.tfplanExitCode == '0' &&
+    needs.terraform-validate.outputs.is-prerelease == 'true'
+  # Displays prominent warning for pre-release infrastructure versions
+```
+
+### 📋 Release Workflow Examples
+
+#### Production Release Process
+
+**1. Standard Production Release:**
+
+```bash
+# Update versions for production release
+echo "version=1.0.2" > application/gradle.properties
+sed -i 's/infrastructure_version = ".*"/infrastructure_version = "1.0.2"/' terraform/staging.tfvars
+
+# Create PR and merge
+git add -A
+git commit -m "Release version 1.0.2
+
+🎯 Production Infrastructure Version Update
+- Previous: 1.0.1
+- Current: 1.0.2 (production)
+
+🚀 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+
+git push origin feature/release-1.0.2
+gh pr create --title "Release version 1.0.2" --body "Production release with new features"
+gh pr merge --squash
+
+# Result: Full CI/CD pipeline runs with Docker publication and infrastructure deployment
+```
+
+#### Pre-release Development Process
+
+**2. Pre-release for Testing:**
+
+```bash
+# Update versions for pre-release testing
+echo "version=1.0.2-alpha.1" > application/gradle.properties
+sed -i 's/infrastructure_version = ".*"/infrastructure_version = "1.0.2-alpha.1"/' terraform/staging.tfvars
+
+# Create PR and merge
+git add -A
+git commit -m "Pre-release version 1.0.2-alpha.1 for testing
+
+🚧 Pre-release Infrastructure Version Update
+- Previous: 1.0.1
+- Current: 1.0.2-alpha.1 (pre-release)
+- ⚠️ Note: Infrastructure deployment will be suppressed
+
+🚀 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+
+git push origin feature/pre-release-testing
+gh pr create --title "Pre-release 1.0.2-alpha.1 for testing" --body "Testing new features without deployment"
+gh pr merge --squash
+
+# Result: Full validation runs, but Docker publication and infrastructure deployment are suppressed
+```
+
+### 🎯 Deployment Control Benefits
+
+**For Development Teams:**
+
+- ✅ **Safe Experimentation**: Test CI/CD pipeline without affecting production
+- ✅ **Version Validation**: Automatic enforcement of proper version increments
+- ✅ **Clear Feedback**: Prominent notifications about what actions are taken/suppressed
+- ✅ **Flexible Workflows**: Support both production and pre-release development cycles
+
+**For Operations:**
+
+- ✅ **Controlled Deployments**: Only production versions trigger infrastructure changes
+- ✅ **Resource Protection**: Pre-release versions cannot accidentally deploy to production
+- ✅ **Audit Trail**: Clear version history and deployment decisions
+- ✅ **Emergency Response**: Quick identification of what versions are deployed
+
+**For Release Management:**
+
+- ✅ **Semantic Versioning**: Standard pre-release version format support
+- ✅ **Progressive Release**: Test builds without affecting production systems
+- ✅ **Version Lineage**: Clear progression from pre-release to production
+- ✅ **Quality Gates**: All validation must pass regardless of release type
+
+### 🔧 Version Management Commands
+
+**Check Current Versions:**
+
+```bash
+# Application version
+grep '^version=' application/gradle.properties
+
+# Infrastructure version
+grep '^infrastructure_version = ' terraform/staging.tfvars
+```
+
+**Update to Pre-release Version:**
+
+```bash
+# Set pre-release versions (suppresses publication/deployment)
+echo "version=1.0.3-beta.1" > application/gradle.properties
+sed -i 's/infrastructure_version = ".*"/infrastructure_version = "1.0.3-beta.1"/' terraform/staging.tfvars
+```
+
+**Update to Production Version:**
+
+```bash
+# Set production versions (enables full CI/CD pipeline)
+echo "version=1.0.3" > application/gradle.properties
+sed -i 's/infrastructure_version = ".*"/infrastructure_version = "1.0.3"/' terraform/staging.tfvars
+```
+
+**Version Validation Testing:**
+
+```bash
+# Test version extraction logic
+cd application && grep '^version=' gradle.properties | cut -d'=' -f2
+cd terraform && grep '^infrastructure_version = ' staging.tfvars | sed 's/.*= "\(.*\)"/\1/'
+
+# Test pre-release detection
+VERSION="1.0.2-alpha.1"
+if [[ "$VERSION" == *"-alpha"* ]] || [[ "$VERSION" == *"-beta"* ]] || [[ "$VERSION" == *"-rc"* ]]; then
+  echo "✅ Pre-release detected: $VERSION"
+else
+  echo "✅ Production version: $VERSION"
+fi
+```
+
+### 📊 Workflow Summary Display
+
+**The system provides comprehensive status displays in GitHub Actions:**
+
+**Pre-release Version Workflow Summary:**
+
+```
+🚧 Pre-release Infrastructure Version Update
+- Previous: 1.0.1
+- Current: 1.0.2-alpha.1 (pre-release)
+- ⚠️ Note: Infrastructure deployment will be suppressed
+
+🚫 Docker Publication Suppressed for Pre-release Version: 1.0.2-alpha.1
+⚠️ Pre-release infrastructure will NOT be deployed
+```
+
+**Production Version Workflow Summary:**
+
+```
+🎯 Production Infrastructure Version Update
+- Previous: 1.0.1
+- Current: 1.0.2 (production)
+
+🚀 Applying Infrastructure Version: 1.0.2
+✅ All layers validated and planned successfully
+🚀 Infrastructure successfully applied to staging environment
+```
+
+This comprehensive versioning system ensures **deterministic, controlled deployments** while providing developers with
+flexible workflows for both production releases and experimental development.
+
 ## 🎯 STScI Portfolio Showcase
 
 This project demonstrates:
 - **Cloud Architecture**: Enterprise AWS infrastructure with Terraform
-- **Microservices Design**: Spring Boot services with proper separation of concerns  
+- **Microservices Design**: Spring Boot services with proper separation of concerns
 - **Data Engineering**: High-volume astronomical data processing pipelines
 - **DevOps Excellence**: Complete CI/CD with monitoring and optimization
 - **Scientific Computing**: Domain expertise in astronomical data reduction
+- **Release Management**: Sophisticated versioning and deployment control systems

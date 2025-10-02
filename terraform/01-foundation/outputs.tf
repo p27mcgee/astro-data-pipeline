@@ -80,3 +80,8 @@ output "project_name" {
   description = "Project name"
   value       = var.project_name
 }
+
+output "infrastructure_version" {
+  description = "Infrastructure deployment version"
+  value       = var.infrastructure_version
+}

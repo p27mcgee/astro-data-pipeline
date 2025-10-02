@@ -11,7 +11,7 @@ plugins {
 
 allprojects {
     group = 'org.stsci.astro'
-    version = '1.0.0'
+    // version is automatically read from gradle.properties
 
     repositories {
         mavenCentral()

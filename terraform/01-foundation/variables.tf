@@ -21,6 +21,12 @@ variable "project_name" {
   default     = "astro-data-pipeline"
 }
 
+variable "infrastructure_version" {
+  description = "Infrastructure deployment version for tracking and tagging"
+  type        = string
+  default     = "1.0.1"
+}
+
 # VPC Configuration
 variable "vpc_cidr" {
   description = "CIDR block for VPC"

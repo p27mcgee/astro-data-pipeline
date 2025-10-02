@@ -1,5 +1,10 @@
 name: Terraform Infrastructure
 
+# This workflow runs in two scenarios:
+# 1. On PR/push to validate and plan terraform changes
+# 2. After 'Build Test Publish' workflow completes successfully on main branch
+#    (ensures Docker images are published before infrastructure deployment)
+
 on:
   pull_request:
     branches: [ main, develop ]
@@ -11,58 +16,107 @@ on:
     paths:
       - 'terraform/**'
       - '.github/workflows/terraform-infrastructure.yml'
-  workflow_dispatch:
-    inputs:
-      action:
-        description: 'Terraform action to perform'
-        required: true
-        default: 'plan'
-        type: choice
-        options:
-          - validate
-          - plan
-          - apply
-          - destroy
-      environment:
-        description: 'Target environment'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-          - staging
-          - production
-      last_layer:
-        description: 'Last layer to process (1-5)'
-        required: true
-        default: '3'
-        type: choice
-        options:
-          - '1'
-          - '2'
-          - '3'
-          - '4'
-          - '5'
+  workflow_run:
+    workflows: [ "Build Test Publish" ]
+    types:
+      - completed
+    branches: [ main ]
 
 env:
   TF_VERSION: '1.13.3'
   AWS_REGION: us-east-1
   TF_IN_AUTOMATION: true
   TF_INPUT: false
-  DEFAULT_LAST_LAYER: '3'  # Default for non-dispatch runs
+  DEFAULT_LAST_LAYER: '3'
+  ENVIRONMENT: 'staging'
 
 permissions:
   id-token: write
   contents: read
   security-events: write  # Required for SARIF uploads
+  pull-requests: write    # Required for PR comments
 
 jobs:
   terraform-validate:
     name: Terraform Validation
     runs-on: ubuntu-latest
-    
+
+    outputs:
+      terraform-version: ${{ steps.extract-terraform-version.outputs.terraform-version }}
+      is-prerelease: ${{ steps.extract-terraform-version.outputs.is-prerelease }}
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Extract Terraform Version
+      id: extract-terraform-version
+      run: |
+        cd terraform
+        # Extract version from staging.tfvars
+        TERRAFORM_VERSION=$(grep '^infrastructure_version = ' staging.tfvars | sed 's/.*= "\(.*\)"/\1/')
+
+        # Check if it's a pre-release version
+        if [[ "$TERRAFORM_VERSION" == *"-alpha"* ]] || [[ "$TERRAFORM_VERSION" == *"-beta"* ]] || [[ "$TERRAFORM_VERSION" == *"-rc"* ]]; then
+          IS_PRERELEASE="true"
+          echo "🚧 **Terraform Infrastructure Version: \`$TERRAFORM_VERSION\` (pre-release)**" >> $GITHUB_STEP_SUMMARY
+        else
+          IS_PRERELEASE="false"
+          echo "🏗️ **Terraform Infrastructure Version: \`$TERRAFORM_VERSION\`**" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "terraform-version=$TERRAFORM_VERSION" >> $GITHUB_OUTPUT
+        echo "is-prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+
+    - name: Validate Version Change (PR only)
+      if: github.event_name == 'pull_request'
+      env:
+        TERRAFORM_VERSION: ${{ steps.extract-terraform-version.outputs.terraform-version }}
+      run: |
+        # Get version from main branch
+        git fetch origin main
+        git checkout origin/main -- terraform/staging.tfvars
+        MAIN_VERSION=$(grep --no-messages '^infrastructure_version = ' terraform/staging.tfvars | sed 's/.*= "\(.*\)"/\1/')
+        if [[ -z "$MAIN_VERSION" ]]; then MAIN_VERSION="0.0.0-alpha.0"; fi
+        git checkout HEAD -- terraform/staging.tfvars
+
+        echo "Current PR terraform version: $TERRAFORM_VERSION"
+        echo "Main branch terraform version: $MAIN_VERSION"
+
+        # Extract base version (remove pre-release suffix if present)
+        CURRENT_BASE=$(echo "$TERRAFORM_VERSION" | cut -d'-' -f1)
+        MAIN_BASE=$(echo "$MAIN_VERSION" | cut -d'-' -f1)
+
+        echo "Current base version: $CURRENT_BASE"
+        echo "Main base version: $MAIN_BASE"
+
+        # Check if it's a pre-release version
+        if [[ "$TERRAFORM_VERSION" == *"-alpha"* ]] || [[ "$TERRAFORM_VERSION" == *"-beta"* ]] || [[ "$TERRAFORM_VERSION" == *"-rc"* ]]; then
+          echo "🚧 Pre-release infrastructure version detected: $TERRAFORM_VERSION"
+          # For pre-release: base version must be > main base version
+          if [ "$CURRENT_BASE" = "$MAIN_BASE" ]; then
+            echo "❌ ERROR: Pre-release base version ($CURRENT_BASE) must be greater than main version ($MAIN_BASE)"
+            echo "Example: If main is 1.0.1, use 1.0.2-alpha.1 (not 1.0.1-alpha.1)"
+            exit 1
+          fi
+          echo "✅ Pre-release infrastructure version validation passed: $MAIN_VERSION → $TERRAFORM_VERSION"
+          echo "## 🚧 Pre-release Infrastructure Version Update" >> $GITHUB_STEP_SUMMARY
+          echo "- **Previous**: \`$MAIN_VERSION\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Current**: \`$TERRAFORM_VERSION\` (pre-release)" >> $GITHUB_STEP_SUMMARY
+          echo "- **⚠️ Note**: Infrastructure deployment will be suppressed" >> $GITHUB_STEP_SUMMARY
+        else
+          # For production releases: version must be different
+          if [ "$TERRAFORM_VERSION" = "$MAIN_VERSION" ]; then
+            echo "❌ ERROR: Terraform infrastructure version must be incremented for PR merge"
+            echo "Current version: $TERRAFORM_VERSION"
+            echo "Please update terraform/staging.tfvars with a new infrastructure_version"
+            exit 1
+          fi
+          echo "✅ Production infrastructure version validation passed: $MAIN_VERSION → $TERRAFORM_VERSION"
+          echo "## 🎯 Production Infrastructure Version Update" >> $GITHUB_STEP_SUMMARY
+          echo "- **Previous**: \`$MAIN_VERSION\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Current**: \`$TERRAFORM_VERSION\` (production)" >> $GITHUB_STEP_SUMMARY
+        fi
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
@@ -112,44 +166,44 @@ jobs:
           version = "0.27.0"
           source  = "github.com/terraform-linters/tflint-ruleset-aws"
         }
-        
+
         rule "terraform_required_version" {
           enabled = true
         }
-        
+
         rule "terraform_required_providers" {
           enabled = true
         }
-        
+
         rule "terraform_unused_declarations" {
           enabled = true
         }
-        
+
         rule "terraform_comment_syntax" {
           enabled = true
         }
-        
+
         rule "terraform_documented_outputs" {
           enabled = true
         }
-        
+
         rule "terraform_documented_variables" {
           enabled = true
         }
-        
+
         rule "terraform_typed_variables" {
           enabled = true
         }
-        
+
         rule "terraform_module_pinned_source" {
           enabled = true
         }
-        
+
         rule "terraform_naming_convention" {
           enabled = true
           format  = "snake_case"
         }
-        
+
         rule "terraform_standard_module_structure" {
           enabled = true
         }
@@ -173,7 +227,6 @@ jobs:
       with:
         directory: terraform
         framework: terraform
-        # TODO maybe no path prefix?
         config_file: ../.checkov.yml
         output_format: sarif
         output_file_path: checkov-results.sarif
@@ -205,12 +258,10 @@ jobs:
     name: Terraform Plan
     runs-on: ubuntu-latest
     needs: terraform-validate
-    if: inputs.action == 'plan' || inputs.action == 'apply' || github.event_name == 'pull_request'
 
-    permissions:
-      id-token: write
-      contents: read
-      pull-requests: write  # Required for PR comments
+    env:
+      TERRAFORM_VERSION: ${{ needs.terraform-validate.outputs.terraform-version }}
+      IS_PRERELEASE: ${{ needs.terraform-validate.outputs.is-prerelease }}
 
     outputs:
       tfplanExitCode: ${{ steps.tf-plan.outputs.exitcode }}
@@ -218,6 +269,15 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Display Plan Information
+      run: |
+        if [ "$IS_PRERELEASE" = "true" ]; then
+          echo "🚧 **Planning Pre-release Infrastructure Version: \`$TERRAFORM_VERSION\`**" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Pre-release infrastructure will NOT be deployed**" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "🏗️ **Planning Production Infrastructure Version: \`$TERRAFORM_VERSION\`**" >> $GITHUB_STEP_SUMMARY
+        fi
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
@@ -235,11 +295,11 @@ jobs:
         audience: sts.amazonaws.com
         output-env-credentials: true
 
-    - name: Terraform Plan - Layered Architecture
+    - name: Terraform Plan - Staging Environment
       id: tf-plan
       env:
-        LAST_LAYER: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
-        ENVIRONMENT: ${{ inputs.environment || 'staging' }}
+        LAST_LAYER: ${{ env.DEFAULT_LAST_LAYER }}
+        ENVIRONMENT: ${{ env.ENVIRONMENT }}
       run: |
         cd terraform
         # Use the layered deployment script for planning
@@ -260,16 +320,17 @@ jobs:
 
     - name: Create Terraform Plan Summary
       env:
-        ENVIRONMENT: ${{ inputs.environment || 'staging' }}
+        ENVIRONMENT: ${{ env.ENVIRONMENT }}
       run: |
         cd terraform
-        echo "## Terraform Plan Summary (${ENVIRONMENT^}) - Layered Architecture" >> $GITHUB_STEP_SUMMARY
+        echo "## Terraform Plan Summary (${ENVIRONMENT^}) - Infrastructure v$TERRAFORM_VERSION" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "✅ All layers validated and planned successfully" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Processing Configuration:" >> $GITHUB_STEP_SUMMARY
-        echo "- Environment: ${ENVIRONMENT}" >> $GITHUB_STEP_SUMMARY
-        echo "- Last layer: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Infrastructure Version**: \`$TERRAFORM_VERSION\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment**: ${ENVIRONMENT}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Last layer**: ${{ env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Available Layers:" >> $GITHUB_STEP_SUMMARY
         echo "- 1: 01-foundation (VPC, networking, security groups)" >> $GITHUB_STEP_SUMMARY
@@ -283,7 +344,7 @@ jobs:
       uses: actions/github-script@v7
       env:
         PLAN: "terraform\n${{ steps.tf-plan.outputs.stdout }}"
-        ENVIRONMENT: ${{ inputs.environment || 'staging' }}
+        ENVIRONMENT: ${{ env.ENVIRONMENT }}
       with:
         script: |
           const output = `#### Terraform Plan (${process.env.ENVIRONMENT}) 📖\`${{ steps.tf-plan.outcome }}\`
@@ -305,243 +366,24 @@ jobs:
             body: output
           })
 
-  terraform-plan-destroy:
-    name: Terraform Plan Destroy
-    runs-on: ubuntu-latest
-    needs: terraform-validate
-    if: inputs.action == 'destroy'
-
-    permissions:
-      id-token: write
-      contents: read
-
-    outputs:
-      tfplanExitCode: ${{ steps.tf-plan-destroy.outputs.exitcode }}
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: ${{ env.TF_VERSION }}
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        # AWS Role Trusts GitHub OIDC identity provider
-        role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
-        role-session-name: GitHubActions-Terraform-Plan-Destroy
-        aws-region: ${{ env.AWS_REGION }}
-        # Explicit OIDC configuration
-        audience: sts.amazonaws.com
-        output-env-credentials: true
-
-    - name: Terraform Plan Destroy - Layered Architecture
-      id: tf-plan-destroy
-      env:
-        LAST_LAYER: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
-      run: |
-        cd terraform
-        # Plan destruction in reverse layer order
-        chmod +x ci/deploy-layers.sh
-        echo "Planning destruction for ${{ inputs.environment }} environment..."
-        export exitcode=0
-        ./ci/deploy-layers.sh ${{ inputs.environment }}.tfvars plan $LAST_LAYER || export exitcode=$?
-
-        echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
-
-        if [ $exitcode -eq 1 ]; then
-          echo "Terraform Plan Destroy Failed"
-          exit 1
-        elif [ $exitcode -eq 0 ]; then
-          echo "Terraform Plan Destroy Succeeded"
-        else
-          echo "Terraform Plan Destroy Completed with exit code: $exitcode"
-        fi
-
-    - name: Create Terraform Plan Destroy Summary
-      run: |
-        cd terraform
-        echo "## Terraform Plan Destroy Summary (${{ inputs.environment }}) - Layered Architecture" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "⚠️ Destruction plan completed successfully" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Processing Configuration:" >> $GITHUB_STEP_SUMMARY
-        echo "- Environment: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-        echo "- Last layer to destroy: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Destruction Scope:" >> $GITHUB_STEP_SUMMARY
-        echo "Layers ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }} through 5 will be destroyed in reverse order" >> $GITHUB_STEP_SUMMARY
-
-  #  terraform-plan-production:
-  #    name: Terraform Plan (Production)
-  #    runs-on: ubuntu-latest
-  #    needs: terraform-validate
-  #    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
-  #    environment: production
-  #
-  #    outputs:
-  #      tfplanExitCode: ${{ steps.tf-plan.outputs.exitcode }}
-  #
-  #    steps:
-  #    - name: Checkout code
-  #      uses: actions/checkout@v4
-  #
-  #    - name: Setup Terraform
-  #      uses: hashicorp/setup-terraform@v3
-  #      with:
-  #        terraform_version: ${{ env.TF_VERSION }}
-  #
-  #    - name: Configure AWS credentials
-  #      uses: aws-actions/configure-aws-credentials@v4
-  #      with:
-  #        # AWS Role Trusts GitHub OIDC identity provider
-  #        role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
-  #        aws-region: ${{ env.AWS_REGION }}
-  #
-  #    - name: Terraform Init
-  #      run: |
-  #        cd terraform
-  #        terraform init \
-  #          -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
-  #          -backend-config="key=production/terraform.tfstate" \
-  #          -backend-config="region=${{ env.AWS_REGION }}" \
-  #          -backend-config="dynamodb_table=${{ secrets.TERRAFORM_STATE_TABLE }}" \
-  #          -backend-config="encrypt=true"
-  #
-  #    - name: Terraform Workspace
-  #      run: |
-  #        cd terraform
-  #        terraform workspace select production || terraform workspace new production
-  #
-  #    - name: Terraform Plan
-  #      id: tf-plan
-  #      run: |
-  #        cd terraform
-  #        export exitcode=0
-  #        terraform plan -detailed-exitcode -no-color -out=tfplan-production -var-file="prod.tfvars" || export exitcode=$?
-  #
-  #        echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
-  #
-  #        if [ $exitcode -eq 1 ]; then
-  #          echo "Terraform Plan Failed"
-  #          exit 1
-  #        elif [ $exitcode -eq 2 ]; then
-  #          echo "Terraform Plan Succeeded with Changes"
-  #        else
-  #          echo "Terraform Plan Succeeded with No Changes"
-  #        fi
-  #
-  #    - name: Publish Terraform Plan
-  #      uses: actions/upload-artifact@v4
-  #      with:
-  #        name: tfplan-production
-  #        path: terraform/tfplan-production
-  #
-  #    - name: Create Terraform Plan Summary
-  #      run: |
-  #        cd terraform
-  #        terraform show -no-color tfplan-production > tfplan-production.txt
-  #
-  #        echo "## Terraform Plan Summary (Production)" >> $GITHUB_STEP_SUMMARY
-  #        echo "" >> $GITHUB_STEP_SUMMARY
-  #        echo "\`\`\`hcl" >> $GITHUB_STEP_SUMMARY
-  #        head -100 tfplan-production.txt >> $GITHUB_STEP_SUMMARY
-  #        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-  #
   terraform-apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
-    needs: terraform-plan
-    if: needs.terraform-plan.outputs.tfplanExitCode == 0 && inputs.action == 'apply'
-    environment: ${{ inputs.environment }}
-
-    permissions:
-      id-token: write
-      contents: read
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: ${{ env.TF_VERSION }}
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        # AWS Role Trusts GitHub OIDC identity provider
-        role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
-        role-session-name: GitHubActions-Terraform-Apply
-        aws-region: ${{ env.AWS_REGION }}
-        # Explicit OIDC configuration
-        audience: sts.amazonaws.com
-        output-env-credentials: true
-
-    - name: Terraform Apply - Layered Architecture
-      env:
-        LAST_LAYER: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
-        ENVIRONMENT: ${{ inputs.environment }}
-      run: |
-        cd terraform
-        # Use the layered deployment script for applying
-        chmod +x ci/deploy-layers.sh
-        ./ci/deploy-layers.sh ${ENVIRONMENT}.tfvars apply $LAST_LAYER
-
-    - name: Terraform Output - Layered Architecture
-      env:
-        ENVIRONMENT: ${{ inputs.environment }}
-      run: |
-        cd terraform
-        echo "## Terraform Apply Results (${ENVIRONMENT^}) - Layered Architecture" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "🚀 Infrastructure successfully applied to ${ENVIRONMENT} environment" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Configuration:" >> $GITHUB_STEP_SUMMARY
-        echo "- Environment: ${ENVIRONMENT}" >> $GITHUB_STEP_SUMMARY
-        echo "- Last layer processed: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Layer Status:" >> $GITHUB_STEP_SUMMARY
-        LAST_LAYER=${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
-        [[ $LAST_LAYER -ge 1 ]] && echo "✅ Layer 1: Foundation (VPC, networking)" >> $GITHUB_STEP_SUMMARY || true
-        [[ $LAST_LAYER -ge 2 ]] && echo "✅ Layer 2: Data (S3, Lambda)" >> $GITHUB_STEP_SUMMARY || true
-        [[ $LAST_LAYER -ge 3 ]] && echo "✅ Layer 3: Database (RDS PostgreSQL)" >> $GITHUB_STEP_SUMMARY || true
-        [[ $LAST_LAYER -ge 4 ]] && echo "✅ Layer 4: Compute (EKS cluster)" >> $GITHUB_STEP_SUMMARY || true
-        [[ $LAST_LAYER -ge 5 ]] && echo "✅ Layer 5: Monitoring (CloudWatch)" >> $GITHUB_STEP_SUMMARY || true
-
-    - name: Export Combined Terraform Outputs
-      env:
-        ENVIRONMENT: ${{ inputs.environment }}
-      run: |
-        cd terraform
-        # Export outputs from all layers into a combined JSON
-        echo '{}' > combined-outputs-${ENVIRONMENT}.json
-        for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
-          echo "Collecting outputs from layer: $layer"
-          if [ -f "$layer/terraform.tfstate" ]; then
-            cd $layer
-            terraform output -json >> ../combined-outputs-${ENVIRONMENT}.json || echo "No outputs from $layer"
-            cd ..
-          fi
-        done
-
-    - name: Upload Combined Terraform Outputs
-      uses: actions/upload-artifact@v4
-      with:
-        name: terraform-outputs-${{ inputs.environment }}-layered
-        path: terraform/combined-outputs-${{ inputs.environment }}.json
-
-  terraform-apply-main:
-    name: Terraform Apply (Main Branch)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [ terraform-validate, terraform-plan ]
+    if: |
+      github.ref == 'refs/heads/main' &&
+      needs.terraform-plan.outputs.tfplanExitCode == '0' &&
+      needs.terraform-validate.outputs.is-prerelease == 'false' &&
+      (
+        (github.event_name == 'push') ||
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      )
     environment:
       name: staging
       url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    env:
+      TERRAFORM_VERSION: ${{ needs.terraform-validate.outputs.terraform-version }}
 
     permissions:
       id-token: write
@@ -550,6 +392,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Display Apply Information
+        run: |
+          echo "🚀 **Applying Infrastructure Version: \`$TERRAFORM_VERSION\`**" >> $GITHUB_STEP_SUMMARY
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -561,40 +407,16 @@ jobs:
         with:
           # AWS Role Trusts GitHub OIDC identity provider
           role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
-          role-session-name: GitHubActions-Terraform-Apply-Main
+          role-session-name: GitHubActions-Terraform-Apply
           aws-region: ${{ env.AWS_REGION }}
           # Explicit OIDC configuration
           audience: sts.amazonaws.com
           output-env-credentials: true
 
-      - name: Terraform Plan - Staging Environment
-        id: tf-plan-main
-        env:
-          LAST_LAYER: ${{ env.DEFAULT_LAST_LAYER }}
-          ENVIRONMENT: 'staging'
-        run: |
-          cd terraform
-          # Use the layered deployment script for planning
-          chmod +x ci/deploy-layers.sh
-          export exitcode=0
-          ./ci/deploy-layers.sh ${ENVIRONMENT}.tfvars plan $LAST_LAYER || export exitcode=$?
-          
-          echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
-          
-          if [ $exitcode -eq 1 ]; then
-            echo "Terraform Plan Failed"
-            exit 1
-          elif [ $exitcode -eq 0 ]; then
-            echo "Terraform Plan Succeeded"
-          else
-            echo "Terraform Plan Completed with exit code: $exitcode"
-          fi
-
       - name: Terraform Apply - Staging Environment
-        if: steps.tf-plan-main.outputs.exitcode == 0
         env:
           LAST_LAYER: ${{ env.DEFAULT_LAST_LAYER }}
-          ENVIRONMENT: 'staging'
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
         run: |
           cd terraform
           # Use the layered deployment script for applying
@@ -602,26 +424,25 @@ jobs:
           ./ci/deploy-layers.sh ${ENVIRONMENT}.tfvars apply $LAST_LAYER
 
       - name: Terraform Output - Staging Environment
-        if: steps.tf-plan-main.outputs.exitcode == 0
         env:
-          ENVIRONMENT: 'staging'
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
         run: |
           cd terraform
-          echo "## Terraform Apply Results (Staging) - Main Branch" >> $GITHUB_STEP_SUMMARY
+          echo "## Terraform Apply Results (${ENVIRONMENT^}) - Infrastructure v$TERRAFORM_VERSION" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "🚀 Infrastructure successfully applied to staging environment" >> $GITHUB_STEP_SUMMARY
+          echo "🚀 Infrastructure successfully applied to ${ENVIRONMENT} environment" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Configuration:" >> $GITHUB_STEP_SUMMARY
-          echo "- Environment: Staging" >> $GITHUB_STEP_SUMMARY
-          echo "- Triggered by: PR merge to main" >> $GITHUB_STEP_SUMMARY
-          echo "- Actor: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Last layer processed: ${{ env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Infrastructure Version**: \`$TERRAFORM_VERSION\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${ENVIRONMENT^}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: PR merge to main" >> $GITHUB_STEP_SUMMARY
+          echo "- **Actor**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Last layer processed**: ${{ env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
 
-      - name: Export Combined Terraform Outputs - Staging
-        if: steps.tf-plan-main.outputs.exitcode == 0
+      - name: Export Combined Terraform Outputs
         env:
-          ENVIRONMENT: 'staging'
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
         run: |
           cd terraform
           # Export outputs from all layers into a combined JSON
@@ -635,165 +456,50 @@ jobs:
             fi
           done
 
-      - name: Upload Combined Terraform Outputs - Staging
-        if: steps.tf-plan-main.outputs.exitcode == 0
+      - name: Upload Combined Terraform Outputs
         uses: actions/upload-artifact@v4
         with:
-          name: terraform-outputs-staging-main
+          name: terraform-outputs-staging-infrastructure
           path: terraform/combined-outputs-staging.json
 
-  # FIXME
-  #    - name: Notify Staging Deployment
-  #      uses: 8398a7/action-slack@v3
-  #      if: always() && ${{ secrets.SLACK_WEBHOOK_URL }} != ''
-  #      with:
-  #        status: ${{ job.status }}
-  #        channel: '#infrastructure'
-  #        text: |
-  #          🏗️ Terraform Apply (Staging) - Layered Architecture: ${{ job.status }}
-  #          Environment: Staging
-  #          Actor: ${{ github.actor }}
-  #          Commit: ${{ github.sha }}
-  #          Architecture: 5-Layer Enterprise Pattern
-  #      env:
-  #        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-  #  terraform-apply-production:
-  #    name: Terraform Apply (Production)
-  #    runs-on: ubuntu-latest
-  #    needs: terraform-plan-production
-  #    if: needs.terraform-plan-production.outputs.tfplanExitCode == 2 && github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #    environment: production
-  #
-  #    steps:
-  #    - name: Checkout code
-  #      uses: actions/checkout@v4
-  #
-  #    - name: Setup Terraform
-  #      uses: hashicorp/setup-terraform@v3
-  #      with:
-  #        terraform_version: ${{ env.TF_VERSION }}
-  #
-  #    - name: Configure AWS credentials
-  #      uses: aws-actions/configure-aws-credentials@v4
-  #      with:
-  #        # AWS Role Trusts GitHub OIDC identity provider
-  #        role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
-  #        aws-region: ${{ env.AWS_REGION }}
-  #
-  #    - name: Download Terraform Plan
-  #      uses: actions/download-artifact@v3
-  #      with:
-  #        name: tfplan-production
-  #        path: terraform/
-  #
-  #    - name: Terraform Init
-  #      run: |
-  #        cd terraform
-  #        terraform init \
-  #          -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
-  #          -backend-config="key=production/terraform.tfstate" \
-  #          -backend-config="region=${{ env.AWS_REGION }}" \
-  #          -backend-config="dynamodb_table=${{ secrets.TERRAFORM_STATE_TABLE }}" \
-  #          -backend-config="encrypt=true"
-  #
-  #    - name: Terraform Workspace
-  #      run: |
-  #        cd terraform
-  #        terraform workspace select production
-  #
-  #    - name: Terraform Apply
-  #      run: |
-  #        cd terraform
-  #        terraform apply -auto-approve tfplan-production
-  #
-  #    - name: Terraform Output
-  #      run: |
-  #        cd terraform
-  #        terraform output -json > terraform-outputs-production.json
-  #
-  #        echo "## Terraform Apply Results (Production)" >> $GITHUB_STEP_SUMMARY
-  #        echo "" >> $GITHUB_STEP_SUMMARY
-  #        echo "Infrastructure successfully applied to production environment" >> $GITHUB_STEP_SUMMARY
-  #
-  #    - name: Upload Terraform Outputs
-  #      uses: actions/upload-artifact@v4
-  #      with:
-  #        name: terraform-outputs-production
-  #        path: terraform/terraform-outputs-production.json
-  #
-  #    - name: Notify Production Deployment
-  #      uses: 8398a7/action-slack@v3
-  #      if: always()
-  #      with:
-  #        status: ${{ job.status }}
-  #        channel: '#infrastructure'
-  #        text: |
-  #          🚀 Terraform Apply (Production): ${{ job.status }}
-  #          Environment: Production
-  #          Actor: ${{ github.actor }}
-  #          Commit: ${{ github.sha }}
-  #
-  #          Infrastructure changes have been applied to production.
-  #      env:
-  #        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-  terraform-destroy:
-    name: Terraform Destroy
+  terraform-apply-skipped:
+    name: Infrastructure Deployment Skipped (Pre-release)
     runs-on: ubuntu-latest
-    needs: terraform-plan-destroy
-    if: needs.terraform-plan-destroy.outputs.tfplanExitCode == 0 && inputs.action == 'destroy'
-    # TODO: Create and configure GitHub production environment with protection rules, then use: ${{ inputs.environment }}
-    environment: staging
+    needs: [ terraform-validate, terraform-plan ]
+    if: |
+      github.ref == 'refs/heads/main' &&
+      needs.terraform-plan.outputs.tfplanExitCode == '0' &&
+      needs.terraform-validate.outputs.is-prerelease == 'true' &&
+      (
+        (github.event_name == 'push') ||
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      )
 
-    permissions:
-      id-token: write
-      contents: read
-      issues: write  # Required for manual approval
-      repository-projects: read  # Required for collaborator access
+    env:
+      TERRAFORM_VERSION: ${{ needs.terraform-validate.outputs.terraform-version }}
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Display Infrastructure Deployment Suppression Notice
+        run: |
+          echo "🚧 **Infrastructure Deployment Suppressed for Pre-release Version: \`$TERRAFORM_VERSION\`**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ⚠️ Pre-release Infrastructure Version Detected" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Infrastructure deployment has been automatically suppressed because the current version contains a pre-release identifier." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Current Version**: \`$TERRAFORM_VERSION\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Pre-release Behavior**:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Terraform validation completed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Terraform plan generated successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚫 **Infrastructure deployment suppressed**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**To enable infrastructure deployment:**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Update \`terraform/staging.tfvars\` to use a production version (without -alpha, -beta, or -rc suffix)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Create a new pull request with the version change" >> $GITHUB_STEP_SUMMARY
+          echo "3. Merge the pull request to trigger infrastructure deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Example production versions**: \`1.0.2\`, \`1.1.0\`, \`2.0.0\`" >> $GITHUB_STEP_SUMMARY
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: ${{ env.TF_VERSION }}
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        # AWS Role Trusts GitHub OIDC identity provider
-        role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE }}
-        role-session-name: GitHubActions-Terraform-Destroy
-        aws-region: ${{ env.AWS_REGION }}
-        # Explicit OIDC configuration
-        audience: sts.amazonaws.com
-        output-env-credentials: true
-
-    - name: Terraform Destroy - Layered Architecture
-      env:
-        LAST_LAYER: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
-      run: |
-        cd terraform
-        # Execute destruction using the layered deployment script
-        ./ci/deploy-layers.sh ${{ inputs.environment }}.tfvars destroy $LAST_LAYER
-
-# FIXME
-#    - name: Notify Destruction
-#      uses: 8398a7/action-slack@v3
-#      if: always()
-#      with:
-#        status: ${{ job.status }}
-#        channel: '#infrastructure-critical'
-#        text: |
-#          ⚠️ TERRAFORM DESTROY - Layered Architecture: ${{ job.status }}
-#          Environment: ${{ inputs.environment }}
-#          Actor: ${{ github.actor }}
-#          Last Layer: ${{ inputs.last_layer || env.DEFAULT_LAST_LAYER }}
-#
-#          Infrastructure layers 1-${{ inputs.last_layer || '1' }} in ${{ inputs.environment }} have been destroyed.
-#          (Reverse order destruction)
-#      env:
-#        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          # Output warning to action logs as well
+          echo "::warning title=Infrastructure Deployment Suppressed::Pre-release version $TERRAFORM_VERSION detected - infrastructure deployment has been automatically suppressed"
