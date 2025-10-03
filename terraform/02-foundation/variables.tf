@@ -52,6 +52,18 @@ variable "database_subnet_cidrs" {
   default     = ["10.0.100.0/24", "10.0.101.0/24"]
 }
 
+# NAT Gateway Configuration
+variable "single_nat_gateway_for_prototyping" {
+  description = "Use a single NAT Gateway for all private subnets (cost optimization for prototyping/staging only)"
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = var.single_nat_gateway_for_prototyping == false || var.environment != "prod"
+    error_message = "single_nat_gateway_for_prototyping cannot be enabled in production environment."
+  }
+}
+
 # Additional Tags
 variable "additional_tags" {
   description = "Additional tags to apply to resources"

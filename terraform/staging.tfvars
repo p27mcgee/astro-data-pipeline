@@ -3,7 +3,7 @@
 #
 # COST OPTIMIZATION APPROACH:
 # This staging environment is optimized for cost (~$202/month) by using:
-# - Single-AZ deployment (saves ~$35/month on NAT Gateway)
+# - Multi-AZ subnets (required for EKS) with single NAT Gateway (saves ~$32/month)
 # - Minimal instance sizes (t3.small/t3.medium for balanced performance)
 # - Aggressive S3 lifecycle policies (30-day expiration)
 # - Reduced monitoring and logging retention
@@ -13,13 +13,14 @@
 aws_region             = "us-east-1"
 environment            = "staging"
 project_name           = "astro-data-pipeline"
-infrastructure_version = "0.6.1"
+infrastructure_version = "0.6.2"
 
-# VPC Configuration - Single-AZ setup for cost optimization
-vpc_cidr              = "10.0.0.0/16"
-public_subnet_cidrs   = ["10.0.1.0/24"]                    # Single AZ (us-east-1a)
-private_subnet_cidrs  = ["10.0.10.0/24"]                   # Single AZ (us-east-1a)
-database_subnet_cidrs = ["10.0.100.0/24", "10.0.101.0/24"] # RDS requires minimum 2 AZs
+# VPC Configuration - Multi-AZ for EKS, Single NAT for cost optimization
+vpc_cidr                            = "10.0.0.0/16"
+public_subnet_cidrs                 = ["10.0.1.0/24", "10.0.2.0/24"]     # us-east-1a, us-east-1b (EKS requires 2+ AZs)
+private_subnet_cidrs                = ["10.0.10.0/24", "10.0.11.0/24"]   # us-east-1a, us-east-1b (EKS requires 2+ AZs)
+database_subnet_cidrs               = ["10.0.100.0/24", "10.0.101.0/24"] # RDS requires minimum 2 AZs
+single_nat_gateway_for_prototyping  = true                               # Cost optimization: Single NAT instead of one per AZ
 
 # EKS Configuration - Staging setup
 eks_cluster_version = "1.28"

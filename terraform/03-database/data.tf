@@ -4,7 +4,7 @@ data "terraform_remote_state" "foundation" {
   workspace = terraform.workspace
   config = {
     bucket               = "astro-data-pipeline-terraform-state-staging"
-    key                  = "layers/01-foundation/terraform.tfstate"
+    key                  = "layers/02-foundation/terraform.tfstate"
     workspace_key_prefix = "workspaces"
     region               = "us-east-1"
   }

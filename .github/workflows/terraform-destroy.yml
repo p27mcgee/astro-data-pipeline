@@ -1,3 +1,4 @@
+
 name: Terraform Destroy
 
 on:
@@ -52,7 +53,7 @@ jobs:
         run: |
           cd terraform
           # Check format for each layer
-          for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+          for layer in 01-data 02-foundation 03-database 04-compute 05-monitoring; do
             echo "Checking format for layer: $layer"
             terraform fmt -check -recursive -diff $layer/
           done
@@ -62,7 +63,7 @@ jobs:
         run: |
           cd terraform
           # Validate each layer independently
-          for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+          for layer in 01-data 02-foundation 03-database 04-compute 05-monitoring; do
             echo "Validating layer: $layer"
             cd $layer
             terraform init -backend=false
@@ -131,7 +132,7 @@ jobs:
         run: |
           cd terraform
           # Run TFLint on each layer
-          for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+          for layer in 01-data 02-foundation 03-database 04-compute 05-monitoring; do
             echo "Running TFLint for layer: $layer"
             cd $layer
             tflint --init
@@ -181,11 +182,34 @@ jobs:
           # Plan destruction in reverse layer order
           chmod +x ci/deploy-layers.sh
           echo "Planning destruction for ${ENVIRONMENT} environment..."
+          echo "Will destroy layers ${LAST_LAYER} through 5 in reverse order"
+
+          # Generate destroy plans for each layer
           export exitcode=0
-          ./ci/deploy-layers.sh ${ENVIRONMENT}.tfvars plan $LAST_LAYER || export exitcode=$?
-          
+          for layer_num in $(seq 5 -1 ${LAST_LAYER}); do
+            case $layer_num in
+              1) layer="01-data" ;;
+              2) layer="02-foundation" ;;
+              3) layer="03-database" ;;
+              4) layer="04-compute" ;;
+              5) layer="05-monitoring" ;;
+            esac
+
+            echo "Planning destroy for layer: $layer"
+            cd $layer
+            terraform init
+            terraform workspace select ${ENVIRONMENT} || terraform workspace new ${ENVIRONMENT}
+            terraform plan -destroy -var-file="../${ENVIRONMENT}.tfvars" -out="destroy-tfplan" || export exitcode=$?
+
+            if [ $exitcode -ne 0 ]; then
+              echo "Terraform plan destroy failed for $layer"
+              exit 1
+            fi
+            cd ..
+          done
+
           echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
-          
+
           if [ $exitcode -eq 1 ]; then
             echo "Terraform Plan Destroy Failed"
             exit 1
@@ -215,10 +239,10 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "#### Layers to be destroyed:" >> $GITHUB_STEP_SUMMARY
           [[ $LAST_LAYER -le 5 ]] && echo "- 5: 05-monitoring (CloudWatch, alarms)" >> $GITHUB_STEP_SUMMARY || true
-          [[ $LAST_LAYER -le 4 ]] && echo "- 4: 04-compute (EKS cluster)" >> $GITHUB_STEP_SUMMARY || true
-          [[ $LAST_LAYER -le 3 ]] && echo "- 3: 03-database (RDS PostgreSQL)" >> $GITHUB_STEP_SUMMARY || true
-          [[ $LAST_LAYER -le 2 ]] && echo "- 2: 02-data (S3 buckets, Lambda triggers)" >> $GITHUB_STEP_SUMMARY || true
-          [[ $LAST_LAYER -le 1 ]] && echo "- 1: 01-foundation (VPC, networking, security groups)" >> $GITHUB_STEP_SUMMARY || true
+          [[ $LAST_LAYER -le 4 ]] && echo "- 4: 04-compute (EKS cluster - requires foundation)" >> $GITHUB_STEP_SUMMARY || true
+          [[ $LAST_LAYER -le 3 ]] && echo "- 3: 03-database (RDS PostgreSQL - requires foundation)" >> $GITHUB_STEP_SUMMARY || true
+          [[ $LAST_LAYER -le 2 ]] && echo "- 2: 02-foundation (VPC, networking, security groups)" >> $GITHUB_STEP_SUMMARY || true
+          [[ $LAST_LAYER -le 1 ]] && echo "- 1: 01-data (S3 buckets, Lambda triggers - no dependencies)" >> $GITHUB_STEP_SUMMARY || true
 
   terraform-destroy:
     name: Terraform Destroy

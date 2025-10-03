@@ -130,7 +130,7 @@ jobs:
       run: |
         cd terraform
         # Check format for each layer
-        for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+        for layer in 01-data 02-foundation 03-database 04-compute 05-monitoring; do
           echo "Checking format for layer: $layer"
           terraform fmt -check -recursive -diff $layer/
         done
@@ -140,7 +140,7 @@ jobs:
       run: |
         cd terraform
         # Validate each layer independently
-        for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+        for layer in 01-data 02-foundation 03-database 04-compute 05-monitoring; do
           echo "Validating layer: $layer"
           cd $layer
           terraform init -backend=false
@@ -209,7 +209,7 @@ jobs:
       run: |
         cd terraform
         # Run TFLint on each layer
-        for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+        for layer in 01-data 02-foundation 03-database 04-compute 05-monitoring; do
           echo "Running TFLint for layer: $layer"
           cd $layer
           tflint --init
@@ -291,6 +291,18 @@ jobs:
         audience: sts.amazonaws.com
         output-env-credentials: true
 
+    - name: Check and Clear Stale Locks (Pre-Plan)
+      env:
+        ENVIRONMENT: ${{ env.ENVIRONMENT }}
+      run: |
+        cd terraform
+        chmod +x ci/unlock-stale-locks.sh
+        # Check for stale locks older than 30 minutes (likely from previous failed runs)
+        # In CI, we can be more aggressive since locks from CI shouldn't persist
+        ./ci/unlock-stale-locks.sh ${ENVIRONMENT} "" 30 || {
+          echo "⚠️ Warning: Could not check/clear all locks, proceeding anyway..."
+        }
+
     - name: Terraform Plan - Staging Environment
       id: tf-plan
       env:
@@ -313,6 +325,18 @@ jobs:
         else
           echo "Terraform Plan Completed with exit code: $exitcode"
         fi
+      # Always cleanup locks on failure
+      continue-on-error: false
+
+    - name: Cleanup Locks on Failure (Post-Plan)
+      if: failure() && steps.tf-plan.conclusion == 'failure'
+      env:
+        ENVIRONMENT: ${{ env.ENVIRONMENT }}
+      run: |
+        cd terraform
+        echo "::warning::Terraform plan failed - attempting to cleanup any locks..."
+        chmod +x ci/unlock-stale-locks.sh
+        FORCE_UNLOCK=true ./ci/unlock-stale-locks.sh ${ENVIRONMENT} "" 0 || true
 
     - name: Create Terraform Plan Summary
       env:
@@ -329,10 +353,10 @@ jobs:
         echo "- **Last layer**: ${{ env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Available Layers:" >> $GITHUB_STEP_SUMMARY
-        echo "- 1: 01-foundation (VPC, networking, security groups)" >> $GITHUB_STEP_SUMMARY
-        echo "- 2: 02-data (S3 buckets, Lambda triggers)" >> $GITHUB_STEP_SUMMARY
-        echo "- 3: 03-database (RDS PostgreSQL)" >> $GITHUB_STEP_SUMMARY
-        echo "- 4: 04-compute (EKS cluster)" >> $GITHUB_STEP_SUMMARY
+        echo "- 1: 01-data (S3 buckets, Lambda triggers - no dependencies)" >> $GITHUB_STEP_SUMMARY
+        echo "- 2: 02-foundation (VPC, networking, security groups)" >> $GITHUB_STEP_SUMMARY
+        echo "- 3: 03-database (RDS PostgreSQL - requires foundation)" >> $GITHUB_STEP_SUMMARY
+        echo "- 4: 04-compute (EKS cluster - requires foundation)" >> $GITHUB_STEP_SUMMARY
         echo "- 5: 05-monitoring (CloudWatch, alarms)" >> $GITHUB_STEP_SUMMARY
 
     - name: Comment Terraform Plan on PR
@@ -409,7 +433,19 @@ jobs:
           audience: sts.amazonaws.com
           output-env-credentials: true
 
+      - name: Check and Clear Stale Locks (Pre-Apply)
+        env:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+        run: |
+          cd terraform
+          chmod +x ci/unlock-stale-locks.sh
+          # More aggressive in apply - clear locks older than 15 minutes
+          ./ci/unlock-stale-locks.sh ${ENVIRONMENT} "" 15 || {
+            echo "⚠️ Warning: Could not check/clear all locks, proceeding anyway..."
+          }
+
       - name: Terraform Apply - Staging Environment
+        id: tf-apply
         env:
           LAST_LAYER: ${{ env.DEFAULT_LAST_LAYER }}
           ENVIRONMENT: ${{ env.ENVIRONMENT }}
@@ -418,6 +454,16 @@ jobs:
           # Use the layered deployment script for applying
           chmod +x ci/deploy-layers.sh
           ./ci/deploy-layers.sh ${ENVIRONMENT}.tfvars apply $LAST_LAYER
+
+      - name: Cleanup Locks on Failure (Post-Apply)
+        if: failure() && steps.tf-apply.conclusion == 'failure'
+        env:
+          ENVIRONMENT: ${{ env.ENVIRONMENT }}
+        run: |
+          cd terraform
+          echo "::error::Terraform apply failed - cleaning up locks..."
+          chmod +x ci/unlock-stale-locks.sh
+          FORCE_UNLOCK=true ./ci/unlock-stale-locks.sh ${ENVIRONMENT} "" 0 || true
 
       - name: Terraform Output - Staging Environment
         env:
@@ -443,7 +489,7 @@ jobs:
           cd terraform
           # Export outputs from all layers into a combined JSON
           echo '{}' > combined-outputs-${ENVIRONMENT}.json
-          for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+          for layer in 01-data 02-foundation 03-database 04-compute 05-monitoring; do
             echo "Collecting outputs from layer: $layer"
             if [ -f "$layer/terraform.tfstate" ]; then
               cd $layer
