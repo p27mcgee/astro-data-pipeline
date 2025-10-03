@@ -36,13 +36,13 @@ management and deployment.
 
 ```bash
 terraform/
-├── 01-foundation/          # Layer 1: Network & Security Foundation
+├── 02-foundation/          # Layer 1: Network & Security Foundation
 │   ├── providers.tf        # Provider configuration
 │   ├── variables.tf        # Layer-specific variables
 │   ├── main.tf            # VPC, subnets, NAT gateways
 │   ├── security-groups.tf  # Security groups for all layers
 │   └── outputs.tf          # Exports for dependent layers
-├── 02-data/               # Layer 2: Data Lake & Event Processing
+├── 01-data/               # Layer 2: Data Lake & Event Processing
 │   ├── providers.tf       # Provider configuration
 │   ├── data.tf           # Remote state imports
 │   ├── variables.tf      # S3 and Lambda configuration
@@ -192,7 +192,7 @@ nano staging.tfvars
 #### Deploy Single Layer
 
 ```bash
-cd 01-foundation
+cd 02-foundation
 terraform init
 terraform plan -var-file="../staging.tfvars"
 terraform apply -var-file="../staging.tfvars"
@@ -202,7 +202,7 @@ terraform apply -var-file="../staging.tfvars"
 
 ```bash
 # Deploy foundation and data only
-for layer in 01-foundation 02-data; do
+for layer in 02-foundation 01-data; do
   cd $layer
   terraform init
   terraform apply -var-file="../staging.tfvars" -auto-approve
@@ -228,8 +228,8 @@ done
 
 Each layer maintains its own `terraform.tfstate` file:
 
-- `01-foundation/terraform.tfstate`
-- `02-data/terraform.tfstate`
+- `02-foundation/terraform.tfstate`
+- `01-data/terraform.tfstate`
 - etc.
 
 ### Remote State (Recommended for Production)
@@ -240,7 +240,7 @@ Configure S3 backend in each layer's `providers.tf`:
 terraform {
   backend "s3" {
     bucket         = "your-terraform-state-bucket"
-    key            = "layers/01-foundation/terraform.tfstate"
+    key            = "layers/02-foundation/terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "terraform-state-locks"
     encrypt        = true
@@ -256,7 +256,7 @@ Layers reference each other using `terraform_remote_state`:
 data "terraform_remote_state" "foundation" {
   backend = "local"  # or "s3" for remote
   config = {
-    path = "../01-foundation/terraform.tfstate"
+    path = "../02-foundation/terraform.tfstate"
   }
 }
 
@@ -275,7 +275,7 @@ resource "aws_db_subnet_group" "main" {
 ```bash
 #!/bin/bash
 # destroy-layers.sh
-LAYERS=("05-monitoring" "04-compute" "03-database" "02-data" "01-foundation")
+LAYERS=("05-monitoring" "04-compute" "03-database" "01-data" "02-foundation")
 
 for layer in "${LAYERS[@]}"; do
   echo "Destroying $layer..."
@@ -292,8 +292,8 @@ done
 cd 05-monitoring && terraform destroy -var-file="../staging.tfvars"
 cd ../04-compute && terraform destroy -var-file="../staging.tfvars"
 cd ../03-database && terraform destroy -var-file="../staging.tfvars"
-cd ../02-data && terraform destroy -var-file="../staging.tfvars"
-cd ../01-foundation && terraform destroy -var-file="../staging.tfvars"
+cd ../01-data && terraform destroy -var-file="../staging.tfvars"
+cd ../02-foundation && terraform destroy -var-file="../staging.tfvars"
 ```
 
 ## 🎯 Benefits of This Architecture
@@ -335,9 +335,9 @@ cd ../01-foundation && terraform destroy -var-file="../staging.tfvars"
 
 ```bash
 # Different layer combinations per environment
-staging: 01-foundation + 02-data + 04-compute
-production: 01-foundation + 02-data + 03-database + 04-compute + 05-monitoring
-development: 01-foundation + 02-data + 04-compute (minimal setup)
+staging: 02-foundation + 01-data + 04-compute
+production: 02-foundation + 01-data + 03-database + 04-compute + 05-monitoring
+development: 02-foundation + 01-data + 04-compute (minimal setup)
 ```
 
 ### Layer Dependencies
@@ -348,12 +348,12 @@ Update `data.tf` in each layer to import required remote states:
 # In 04-compute/data.tf
 data "terraform_remote_state" "foundation" {
   backend = "local"
-  config = { path = "../01-foundation/terraform.tfstate" }
+  config = { path = "../02-foundation/terraform.tfstate" }
 }
 
 data "terraform_remote_state" "data" {
   backend = "local"
-  config = { path = "../02-data/terraform.tfstate" }
+  config = { path = "../01-data/terraform.tfstate" }
 }
 ```
 
@@ -379,10 +379,10 @@ data "terraform_remote_state" "data" {
 
 ```bash
 # Check layer state
-cd 01-foundation && terraform show
+cd 02-foundation && terraform show
 
 # Validate layer configuration
-cd 02-data && terraform validate
+cd 01-data && terraform validate
 
 # Import existing resources
 cd 03-database && terraform import aws_db_instance.main db-identifier

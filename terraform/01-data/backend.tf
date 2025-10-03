@@ -1,4 +1,4 @@
-# Remote state backend configuration for Layer 2: Data
+# Remote state backend configuration for Layer 1: Data
 # Stores terraform state in S3 with DynamoDB locking for safe concurrent access
 
 terraform {
@@ -7,7 +7,7 @@ terraform {
     bucket = "astro-data-pipeline-terraform-state-staging"
 
     # State file path for this layer
-    key = "layers/02-data/terraform.tfstate"
+    key = "layers/01-data/terraform.tfstate"
 
     # AWS region
     region = "us-east-1"
