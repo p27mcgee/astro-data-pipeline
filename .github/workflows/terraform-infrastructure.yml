@@ -130,7 +130,7 @@ jobs:
       run: |
         cd terraform
         # Check format for each layer
-        for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+        for layer in 01-data 02-foundation 03-database 04-compute 05-monitoring; do
           echo "Checking format for layer: $layer"
           terraform fmt -check -recursive -diff $layer/
         done
@@ -140,7 +140,7 @@ jobs:
       run: |
         cd terraform
         # Validate each layer independently
-        for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+        for layer in 01-data 02-foundation 03-database 04-compute 05-monitoring; do
           echo "Validating layer: $layer"
           cd $layer
           terraform init -backend=false
@@ -209,7 +209,7 @@ jobs:
       run: |
         cd terraform
         # Run TFLint on each layer
-        for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+        for layer in 01-data 02-foundation 03-database 04-compute 05-monitoring; do
           echo "Running TFLint for layer: $layer"
           cd $layer
           tflint --init
@@ -353,10 +353,10 @@ jobs:
         echo "- **Last layer**: ${{ env.DEFAULT_LAST_LAYER }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Available Layers:" >> $GITHUB_STEP_SUMMARY
-        echo "- 1: 01-foundation (VPC, networking, security groups)" >> $GITHUB_STEP_SUMMARY
-        echo "- 2: 02-data (S3 buckets, Lambda triggers)" >> $GITHUB_STEP_SUMMARY
-        echo "- 3: 03-database (RDS PostgreSQL)" >> $GITHUB_STEP_SUMMARY
-        echo "- 4: 04-compute (EKS cluster)" >> $GITHUB_STEP_SUMMARY
+        echo "- 1: 01-data (S3 buckets, Lambda triggers - no dependencies)" >> $GITHUB_STEP_SUMMARY
+        echo "- 2: 02-foundation (VPC, networking, security groups)" >> $GITHUB_STEP_SUMMARY
+        echo "- 3: 03-database (RDS PostgreSQL - requires foundation)" >> $GITHUB_STEP_SUMMARY
+        echo "- 4: 04-compute (EKS cluster - requires foundation)" >> $GITHUB_STEP_SUMMARY
         echo "- 5: 05-monitoring (CloudWatch, alarms)" >> $GITHUB_STEP_SUMMARY
 
     - name: Comment Terraform Plan on PR
@@ -489,7 +489,7 @@ jobs:
           cd terraform
           # Export outputs from all layers into a combined JSON
           echo '{}' > combined-outputs-${ENVIRONMENT}.json
-          for layer in 01-foundation 02-data 03-database 04-compute 05-monitoring; do
+          for layer in 01-data 02-foundation 03-database 04-compute 05-monitoring; do
             echo "Collecting outputs from layer: $layer"
             if [ -f "$layer/terraform.tfstate" ]; then
               cd $layer

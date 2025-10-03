@@ -18,10 +18,10 @@ Arguments:
                 - Can also be set via LAST_LAYER environment variable
 
 Available Layers:
-  1: 01-foundation  - VPC, networking, security groups
-  2: 02-data        - S3 buckets, Lambda triggers
-  3: 03-database    - RDS PostgreSQL
-  4: 04-compute     - EKS cluster, node groups
+  1: 01-data        - S3 buckets, Lambda triggers (no dependencies)
+  2: 02-foundation  - VPC, networking, security groups
+  3: 03-database    - RDS PostgreSQL (requires foundation)
+  4: 04-compute     - EKS cluster, node groups (requires foundation)
   5: 05-monitoring  - CloudWatch, alarms
 
 Examples:
@@ -31,7 +31,7 @@ Examples:
   # Apply all layers for production
   ./deploy-layers.sh prod.tfvars apply 5
 
-  # Destroy layers 5, 4, 3 (preserve foundation and data)
+  # Destroy layers 5, 4, 3 (preserve data and foundation)
   ./deploy-layers.sh staging.tfvars destroy 3
 
   # Validate all layers (no tfvars needed)
@@ -55,7 +55,7 @@ fi
 TFVARS_FILE=${1:-"staging.tfvars"}
 ACTION=${2:-"plan"}
 LAST_LAYER=${3:-${LAST_LAYER:-1}}  # Default to layer 1, can be overridden by env var
-ALL_LAYERS=("01-foundation" "02-data" "03-database" "04-compute" "05-monitoring")
+ALL_LAYERS=("01-data" "02-foundation" "03-database" "04-compute" "05-monitoring")
 
 # Determine layers to process based on LAST_LAYER and ACTION
 LAYERS=()
