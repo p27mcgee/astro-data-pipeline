@@ -77,8 +77,9 @@ resource "aws_subnet" "database" {
 }
 
 # Static IP addresses for NAT gateways to ensure consistent outbound IPs
+# Count: Single NAT for prototyping, or one per AZ for production redundancy
 resource "aws_eip" "nat" {
-  count = length(var.public_subnet_cidrs)
+  count = var.single_nat_gateway_for_prototyping ? 1 : length(var.public_subnet_cidrs)
 
   domain     = "vpc"
   depends_on = [aws_internet_gateway.main]
@@ -89,8 +90,9 @@ resource "aws_eip" "nat" {
 }
 
 # NAT gateways to provide internet access for private subnets
+# Count: Single NAT for prototyping, or one per AZ for production redundancy
 resource "aws_nat_gateway" "main" {
-  count = length(var.public_subnet_cidrs)
+  count = var.single_nat_gateway_for_prototyping ? 1 : length(var.public_subnet_cidrs)
 
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
@@ -117,6 +119,8 @@ resource "aws_route_table" "public" {
 }
 
 # Private route tables directing traffic through NAT gateways
+# When single NAT: all private subnets route through NAT[0]
+# When multi-AZ NAT: each private subnet routes through its own AZ's NAT
 resource "aws_route_table" "private" {
   count = length(var.private_subnet_cidrs)
 
@@ -124,7 +128,7 @@ resource "aws_route_table" "private" {
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main[count.index].id
+    nat_gateway_id = var.single_nat_gateway_for_prototyping ? aws_nat_gateway.main[0].id : aws_nat_gateway.main[count.index].id
   }
 
   tags = merge(var.additional_tags, {

@@ -4,6 +4,53 @@
 
 set -e
 
+# Show usage if no arguments provided
+if [[ $# -eq 0 ]]; then
+    cat << 'EOF'
+Usage: deploy-layers.sh <tfvars_file> <action> [last_layer]
+
+Arguments:
+  tfvars_file   Path to .tfvars file (e.g., staging.tfvars, prod.tfvars)
+  action        Terraform action to perform: plan, apply, destroy, validate, format
+  last_layer    Optional: Layer number to process (1-5)
+                - For plan/apply/validate/format: highest layer to process (builds 1→N)
+                - For destroy: lowest layer to destroy (destroys N→lowest, top-down)
+                - Can also be set via LAST_LAYER environment variable
+
+Available Layers:
+  1: 01-foundation  - VPC, networking, security groups
+  2: 02-data        - S3 buckets, Lambda triggers
+  3: 03-database    - RDS PostgreSQL
+  4: 04-compute     - EKS cluster, node groups
+  5: 05-monitoring  - CloudWatch, alarms
+
+Examples:
+  # Plan layers 1-4 for staging
+  ./deploy-layers.sh staging.tfvars plan 4
+
+  # Apply all layers for production
+  ./deploy-layers.sh prod.tfvars apply 5
+
+  # Destroy layers 5, 4, 3 (preserve foundation and data)
+  ./deploy-layers.sh staging.tfvars destroy 3
+
+  # Validate all layers (no tfvars needed)
+  ./deploy-layers.sh dummy validate 5
+
+  # Format check all layers
+  ./deploy-layers.sh dummy format 5
+
+  # Use environment variable for layer
+  LAST_LAYER=3 ./deploy-layers.sh staging.tfvars plan
+
+Notes:
+  - Layers are processed in dependency order (1→2→3→4→5)
+  - Destroy processes in reverse order (5→4→3→2→1)
+  - validate and format actions don't require a tfvars file
+EOF
+    exit 1
+fi
+
 # Configuration
 TFVARS_FILE=${1:-"staging.tfvars"}
 ACTION=${2:-"plan"}
@@ -13,7 +60,8 @@ ALL_LAYERS=("01-foundation" "02-data" "03-database" "04-compute" "05-monitoring"
 # Determine layers to process based on LAST_LAYER and ACTION
 LAYERS=()
 if [[ "$ACTION" == "destroy" ]]; then
-    # For destroy: LAST_LAYER is the lowest layer to destroy, destroy upwards
+    # For destroy: LAST_LAYER is the lowest layer to destroy
+    # Select layers >= LAST_LAYER, then reverse them for top-down destruction
     for i in "${!ALL_LAYERS[@]}"; do
         layer_num=$((i + 1))
         if [[ $layer_num -ge $LAST_LAYER ]]; then
