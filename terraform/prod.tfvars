@@ -13,6 +13,7 @@
 aws_region   = "us-east-1"
 environment  = "prod"
 project_name = "astro-data-pipeline"
+infrastructure_version = "0.0.0"
 
 # VPC Configuration - Multi-AZ for high availability
 vpc_cidr                           = "10.0.0.0/16"
@@ -22,7 +23,7 @@ database_subnet_cidrs              = ["10.0.100.0/24", "10.0.101.0/24", "10.0.10
 single_nat_gateway_for_prototyping = false # Production: One NAT Gateway per AZ for full redundancy
 
 # EKS Configuration - Production-ready with multiple node groups
-eks_cluster_version = "1.28"
+eks_cluster_version = "1.30"
 
 # EKS Security Configuration - Restrict public endpoint access
 # PRODUCTION: Define specific IP ranges for authorized access

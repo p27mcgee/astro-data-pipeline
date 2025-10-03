@@ -23,7 +23,7 @@ database_subnet_cidrs               = ["10.0.100.0/24", "10.0.101.0/24"] # RDS r
 single_nat_gateway_for_prototyping  = true                               # Cost optimization: Single NAT instead of one per AZ
 
 # EKS Configuration - Staging setup
-eks_cluster_version = "1.28"
+eks_cluster_version = "1.30"
 
 # EKS Security Configuration - Restrict public endpoint access
 # IMPORTANT: Replace with your actual public IP address or network CIDR

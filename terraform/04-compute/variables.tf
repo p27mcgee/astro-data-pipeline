@@ -58,7 +58,7 @@ variable "eks_node_groups" {
       }
       capacity_type = "ON_DEMAND"
       ami_type      = "AL2_x86_64"
-      disk_size     = 20
+      disk_size     = 50  # Increased for container images and ephemeral processing storage
       labels = {
         "node.kubernetes.io/workload" = "general"
       }

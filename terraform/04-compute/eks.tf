@@ -189,17 +189,6 @@ resource "aws_iam_role_policy_attachment" "eks_s3_access" {
   role       = aws_iam_role.eks_nodes.name
 }
 
-# OIDC identity provider for Kubernetes service account authentication
-resource "aws_iam_openid_connect_provider" "eks" {
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.eks.certificates[0].sha1_fingerprint]
-  url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
-
-  tags = merge(var.additional_tags, {
-    Name = "${var.project_name}-${var.environment}-eks-oidc"
-  })
-}
-
 # CloudWatch log group for EKS control plane logs with KMS encryption
 resource "aws_cloudwatch_log_group" "eks_cluster" {
   name              = "/aws/eks/${var.project_name}-${var.environment}-eks/cluster"
