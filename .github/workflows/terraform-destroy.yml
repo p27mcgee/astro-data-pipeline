@@ -181,11 +181,34 @@ jobs:
           # Plan destruction in reverse layer order
           chmod +x ci/deploy-layers.sh
           echo "Planning destruction for ${ENVIRONMENT} environment..."
+          echo "Will destroy layers ${LAST_LAYER} through 5 in reverse order"
+
+          # Generate destroy plans for each layer
           export exitcode=0
-          ./ci/deploy-layers.sh ${ENVIRONMENT}.tfvars plan $LAST_LAYER || export exitcode=$?
-          
+          for layer_num in $(seq 5 -1 ${LAST_LAYER}); do
+            case $layer_num in
+              1) layer="01-foundation" ;;
+              2) layer="02-data" ;;
+              3) layer="03-database" ;;
+              4) layer="04-compute" ;;
+              5) layer="05-monitoring" ;;
+            esac
+
+            echo "Planning destroy for layer: $layer"
+            cd $layer
+            terraform init
+            terraform workspace select ${ENVIRONMENT} || terraform workspace new ${ENVIRONMENT}
+            terraform plan -destroy -var-file="../${ENVIRONMENT}.tfvars" -out="destroy-tfplan" || export exitcode=$?
+
+            if [ $exitcode -ne 0 ]; then
+              echo "Terraform plan destroy failed for $layer"
+              exit 1
+            fi
+            cd ..
+          done
+
           echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
-          
+
           if [ $exitcode -eq 1 ]; then
             echo "Terraform Plan Destroy Failed"
             exit 1
