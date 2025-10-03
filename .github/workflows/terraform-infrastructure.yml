@@ -22,7 +22,7 @@ env:
   AWS_REGION: us-east-1
   TF_IN_AUTOMATION: true
   TF_INPUT: false
-  DEFAULT_LAST_LAYER: '3'
+  DEFAULT_LAST_LAYER: '4'
   ENVIRONMENT: 'staging'
 
 permissions:
