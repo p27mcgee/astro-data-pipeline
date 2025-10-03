@@ -131,7 +131,8 @@ _I, for one, welcome our new AI overlords!_ - Kent Brockman (probably)
 - **Production/Research Separation**: Complete segregation of operational vs experimental data prevents production
   contamination
 - **Experiment Reproducibility**: Every research workflow tracked with complete parameter and lineage preservation
-- **Database Performance**: Partitioning strategy delivers 5-10x query performance improvement for large datasets
+- **Database Performance**: Time-based partitioning (by observation time) delivers 5-10x query performance improvement,
+  with recent data on fast storage (NVMe) and archive data on cost-effective storage tiers
 - **Collaboration Support**: Researcher-specific data organization enables multi-team collaboration without interference
 
 ## 🎯 Target Role Alignment
@@ -146,10 +147,14 @@ This project demonstrates **senior-level capabilities** in:
 
 ## 📈 Project Timeline
 
-- **Duration**: ambitious goal of 2-week development sprint to functioning prototype
+- **Duration**: ~~ambitious goal of 2-week development sprint to functioning prototype~~
+  Given the rate of progress over the first two weeks I expect to have functioning prototype in 1 more week,
+  so around Oct 9.
 - **Approach**: AI-assisted development with Claude Code
 - **Status**: Infrastructure ready for deployment, application components implemented
-- **Next Phase**: AWS infrastructure deployment
+- **Next Phase**: ~~AWS infrastructure deployment~~
+  AWS EKS deployment,
+  Local testing with Docker Compose and then Docker Desktop Kubernetes
 
 ---
 

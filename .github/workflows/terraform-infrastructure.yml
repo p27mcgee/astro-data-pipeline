@@ -22,7 +22,7 @@ env:
   AWS_REGION: us-east-1
   TF_IN_AUTOMATION: true
   TF_INPUT: false
-  DEFAULT_LAST_LAYER: '3'
+  DEFAULT_LAST_LAYER: '4'
   ENVIRONMENT: 'staging'
 
 permissions:
@@ -88,10 +88,11 @@ jobs:
         # Check if it's a pre-release version
         if [[ "$TERRAFORM_VERSION" == *"-alpha"* ]] || [[ "$TERRAFORM_VERSION" == *"-beta"* ]] || [[ "$TERRAFORM_VERSION" == *"-rc"* ]]; then
           echo "🚧 Pre-release infrastructure version detected: $TERRAFORM_VERSION"
-          # For pre-release: base version must be > main base version
-          if [ "$CURRENT_BASE" = "$MAIN_BASE" ]; then
-            echo "❌ ERROR: Pre-release base version ($CURRENT_BASE) must be greater than main version ($MAIN_BASE)"
-            echo "Example: If main is 1.0.1, use 1.0.2-alpha.1 (not 1.0.1-alpha.1)"
+          # For pre-release: version must be greater than main version
+          # Use sort -V for semantic version comparison
+          if [ "$(printf '%s\n' "$MAIN_VERSION" "$TERRAFORM_VERSION" | sort -V | tail -n1)" = "$MAIN_VERSION" ]; then
+            echo "❌ ERROR: Pre-release version ($TERRAFORM_VERSION) must be greater than main version ($MAIN_VERSION)"
+            echo "Example: 0.6.1-alpha.0 → 0.6.1-alpha.1 or 0.6.1-alpha.0 → 0.6.2-alpha.1"
             exit 1
           fi
           echo "✅ Pre-release infrastructure version validation passed: $MAIN_VERSION → $TERRAFORM_VERSION"
