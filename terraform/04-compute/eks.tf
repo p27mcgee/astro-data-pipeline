@@ -12,10 +12,13 @@ resource "aws_eks_cluster" "main" {
     security_group_ids      = [data.terraform_remote_state.foundation.outputs.eks_cluster_security_group_id]
   }
 
-  encryption_config {
-    resources = ["secrets"]
-    provider {
-      key_arn = var.enable_kms_encryption ? aws_kms_key.eks[0].arn : null
+  dynamic "encryption_config" {
+    for_each = var.enable_kms_encryption ? [1] : []
+    content {
+      resources = ["secrets"]
+      provider {
+        key_arn = aws_kms_key.eks[0].arn
+      }
     }
   }
 
