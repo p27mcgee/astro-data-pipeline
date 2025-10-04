@@ -13,7 +13,7 @@
 aws_region             = "us-east-1"
 environment            = "staging"
 project_name           = "astro-data-pipeline"
-infrastructure_version = "0.6.2"
+infrastructure_version = "0.6.3"
 
 # VPC Configuration - Multi-AZ for EKS, Single NAT for cost optimization
 vpc_cidr                            = "10.0.0.0/16"
@@ -23,7 +23,7 @@ database_subnet_cidrs               = ["10.0.100.0/24", "10.0.101.0/24"] # RDS r
 single_nat_gateway_for_prototyping  = true                               # Cost optimization: Single NAT instead of one per AZ
 
 # EKS Configuration - Staging setup
-eks_cluster_version = "1.28"
+eks_cluster_version = "1.30"
 
 # EKS Security Configuration - Restrict public endpoint access
 # IMPORTANT: Replace with your actual public IP address or network CIDR

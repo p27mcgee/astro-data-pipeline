@@ -37,17 +37,6 @@ output "eks_cluster_status" {
   value       = aws_eks_cluster.main.status
 }
 
-# EKS OIDC Provider
-output "eks_oidc_issuer_url" {
-  description = "The URL on the EKS cluster for the OpenID Connect identity provider"
-  value       = aws_eks_cluster.main.identity[0].oidc[0].issuer
-}
-
-output "eks_oidc_provider_arn" {
-  description = "The ARN of the OIDC Provider for EKS"
-  value       = aws_iam_openid_connect_provider.eks.arn
-}
-
 # Node Group Outputs
 output "eks_node_groups" {
   description = "EKS node group information"
