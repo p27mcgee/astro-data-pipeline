@@ -11,7 +11,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.stsci.astro.processor.annotation.InternalApi;
 import org.stsci.astro.processor.model.ProcessingContext;
 import org.stsci.astro.processor.model.WorkflowVersion;
 import org.stsci.astro.processor.service.WorkflowVersionService;
@@ -29,7 +36,8 @@ import java.util.Map;
 @RequestMapping("/api/v1/workflows")
 @RequiredArgsConstructor
 @Slf4j
-@Tag(name = "Workflow Management", description = "Workflow versioning and activation management APIs")
+@Tag(name = "Workflow Versioning (Internal)", description = "Internal API for workflow version management and experimental promotion")
+@InternalApi("Used by research teams and DevOps for managing processing algorithm versions")
 public class WorkflowVersionController {
 
     private final WorkflowVersionService workflowVersionService;

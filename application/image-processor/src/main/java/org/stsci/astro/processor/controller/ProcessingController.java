@@ -4,21 +4,27 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import org.stsci.astro.processor.dto.JobSubmissionRequest;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.stsci.astro.processor.annotation.ExternalApi;
 import org.stsci.astro.processor.dto.JobStatusResponse;
+import org.stsci.astro.processor.dto.JobSubmissionRequest;
 import org.stsci.astro.processor.dto.ProcessingMetricsResponse;
 import org.stsci.astro.processor.entity.ProcessingJob;
 import org.stsci.astro.processor.service.ProcessingJobService;
 
-import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.Optional;
 
@@ -26,7 +32,8 @@ import java.util.Optional;
 @RestController
 @RequestMapping("/api/v1/processing")
 @RequiredArgsConstructor
-@Tag(name = "Image Processing", description = "Astronomical image processing operations")
+@Tag(name = "Image Processing (External)", description = "Public API for astronomical image processing job management")
+@ExternalApi("Primary interface for submitting and managing FITS image processing jobs")
 public class ProcessingController {
 
     private final ProcessingJobService processingJobService;
