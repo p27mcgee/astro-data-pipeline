@@ -10,7 +10,7 @@ plugins {
 }
 
 allprojects {
-    group = 'org.stsci.astro'
+    group = 'com.mcgeecahill.astro'
     // version is automatically read from gradle.properties
 
     repositories {

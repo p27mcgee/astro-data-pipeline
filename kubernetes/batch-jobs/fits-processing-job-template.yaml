@@ -36,7 +36,7 @@ spec:
           - -c
           - |
             echo "Starting batch FITS processing job"
-            java -cp /app org.stsci.astro.processor.batch.BatchProcessingRunner \
+            java -cp /app com.mcgeecahill.astro.processor.batch.BatchProcessingRunner \
               --input-bucket=${INPUT_BUCKET} \
               --input-prefix=${INPUT_PREFIX} \
               --output-bucket=${OUTPUT_BUCKET} \
@@ -181,7 +181,7 @@ spec:
                 START_DATE=$(date -d '1 day ago' '+%Y-%m-%d')
                 END_DATE=$(date '+%Y-%m-%d')
                 
-                java -cp /app org.stsci.astro.processor.batch.NightlyProcessor \
+                java -cp /app com.mcgeecahill.astro.processor.batch.NightlyProcessor \
                   --start-date=${START_DATE} \
                   --end-date=${END_DATE} \
                   --input-bucket=${INPUT_BUCKET} \
@@ -271,7 +271,7 @@ spec:
                 echo "Starting catalog maintenance at $(date)"
                 
                 # Run database maintenance tasks
-                java -cp /app org.stsci.astro.catalog.maintenance.CatalogMaintenance \
+                java -cp /app com.mcgeecahill.astro.catalog.maintenance.CatalogMaintenance \
                   --cleanup-transients \
                   --update-statistics \
                   --vacuum-analyze \

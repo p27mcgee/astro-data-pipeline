@@ -84,14 +84,14 @@ tasks.register('buildDocker', Exec) {
 
 // Custom task to generate FITS test data
 tasks.register('generateTestData', JavaExec) {
-    mainClass = 'org.stsci.astro.processor.util.TestDataGenerator'
+    mainClass = 'com.mcgeecahill.astro.processor.util.TestDataGenerator'
     classpath = sourceSets.main.runtimeClasspath
     args = ['--output-dir', 'src/test/resources/fits-data', '--count', '10']
 }
 
 // Performance profiling task
 tasks.register('profile', JavaExec) {
-    mainClass = 'org.stsci.astro.processor.ImageProcessorApplication'
+    mainClass = 'com.mcgeecahill.astro.processor.ImageProcessorApplication'
     classpath = sourceSets.main.runtimeClasspath
     systemProperty 'spring.profiles.active', 'profiling'
     jvmArgs '-XX:+FlightRecorder',
@@ -118,7 +118,7 @@ compileJava {
 }
 
 springBoot {
-    mainClass = 'org.stsci.astro.processor.ImageProcessorApplication'
+    mainClass = 'com.mcgeecahill.astro.processor.ImageProcessorApplication'
 }
 
 // Application properties for build

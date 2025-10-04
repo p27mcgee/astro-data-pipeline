@@ -42,7 +42,7 @@ spring:
 logging:
   level:
     org.springframework.test: DEBUG
-    org.stsci.astro.processor: DEBUG
+    com.mcgeecahill.astro.processor: DEBUG
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
 
@@ -117,7 +117,7 @@ spring:
 logging:
   level:
     org.springframework.test: WARN
-    org.stsci.astro.processor: INFO
+    com.mcgeecahill.astro.processor: INFO
     org.hibernate.SQL: WARN
 
 astro:
@@ -179,7 +179,7 @@ spring:
 logging:
   level:
     org.springframework.test: WARN
-    org.stsci.astro.processor: INFO
+    com.mcgeecahill.astro.processor: INFO
     org.hibernate.SQL: WARN
 
 astro:

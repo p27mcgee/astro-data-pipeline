@@ -8,7 +8,7 @@ astronomical data processing system designed for NASA's Roman Space Telescope mi
 ## 💼 Business Problem Solved
 
 **Challenge**: Process massive volumes of telescope images (multi-gigabyte FITS files) from space missions, requiring
-real-time calibration, object detection, and catalog generation with 99.9% reliability.
+image calibration, object detection, and catalog generation with 99.9% uptime.
 
 **Solution**: Built a scalable, cloud-native processing pipeline that automatically handles raw telescope data, performs
 scientific image calibration, and generates searchable astronomical object catalogs.
@@ -74,7 +74,7 @@ _I, for one, welcome our new AI overlords!_ - Kent Brockman (probably)
 |--------------------|---------------------------------------------------------|
 | **Cloud Platform** | AWS (EKS, RDS, S3, Lambda, CloudWatch)                  |
 | **Infrastructure** | Terraform, Kubernetes, Docker                           |
-| **Backend**        | Java Spring Boot, PostgreSQL, PostGIS                   |
+| **Backend**        | Java Spring Boot, PostgreSQL/PostGIS                    |
 | **Orchestration**  | Apache Airflow, Kubernetes Jobs                         |
 | **CI/CD**          | GitHub Actions, security scanning, automated deployment |
 | **Monitoring**     | CloudWatch, comprehensive logging and metrics           |
@@ -122,41 +122,57 @@ _I, for one, welcome our new AI overlords!_ - Kent Brockman (probably)
 ### **Operational Excellence**
 
 - **Reliability**: Production-grade system design with automated recovery
-- **Efficiency**: Parallel processing reduces time-to-science for astronomical discoveries
+- **Performance**: Parallel processing reduces time-to-science for astronomical discoveries
 - **Scalability**: Handles variable workloads from small datasets to survey-scale processing
 - **Maintainability**: Clean architecture enables rapid feature development
 
 ### **Data Governance & Research Enablement**
 
-- **Production/Research Separation**: Complete segregation of operational vs experimental data prevents production
+- **Production/Research Separation**: Segregation of production vs experimental results prevents production
   contamination
 - **Experiment Reproducibility**: Every research workflow tracked with complete parameter and lineage preservation
-- **Database Performance**: Time-based partitioning (by observation time) delivers 5-10x query performance improvement,
-  with recent data on fast storage (NVMe) and archive data on cost-effective storage tiers
-- **Collaboration Support**: Researcher-specific data organization enables multi-team collaboration without interference
+- **Database Performance**: Time-based partitioning (by observation time) can potentially deliver 5-10x query
+  performance
+  improvement, by partitioining recent data on fast storage (NVMe) and archive data on cost-effective storage tiers
+- **Collaboration Support**: Result data identified by processing workflow enables multi-team collaboration without
+  interference
 
 ## 🎯 Target Role Alignment
 
 This project demonstrates **senior-level capabilities** in:
 
 - **Senior Cloud Architect**: Enterprise AWS infrastructure with security and compliance
-- **Senior Software Engineer**: Complex microservices with scientific domain expertise
-- **DevOps Engineer**: Complete CI/CD with monitoring and optimization
-- **Data Engineer**: High-volume processing pipelines with performance optimization
-- **Technical Lead**: Architecture design and team collaboration capabilities
+- **Senior Software Engineer**: Complex microservices for scientific domain
+- **DevOps Engineer**: Complete CI/CD workflows implemented in GitHub
+- **Data Engineer**: High-volume processing pipelines with performance optimizations
 
 ## 📈 Project Timeline
 
-- **Duration**: ~~ambitious goal of 2-week development sprint to functioning prototype~~
-  Given the rate of progress over the first two weeks I expect to have functioning prototype in 1 more week,
-  so around Oct 9.
 - **Approach**: AI-assisted development with Claude Code
-- **Status**: Infrastructure ready for deployment, application components implemented
-- **Next Phase**: ~~AWS infrastructure deployment~~
-  AWS EKS deployment,
-  Local testing with Docker Compose and then Docker Desktop Kubernetes
+- **Duration**:
+
+  - [Sep 19] Ambitious goal of 2-week development sprint to functioning prototype.
+
+  - [Oct 3] After two weeks progress has been very good, but I'm not ready for end-to-end
+    testing in the cloud. Given the rate of progress over the first two weeks I expect to have
+    functioning prototype in another week, around Oct 9.
+
+- **Status**:
+  - [Sep 26] Infrastructure ready for trial deployment, application components implemented
+
+  - [Oct 3] AWS resources deployed except for CloudWatch.
+    GitHub workflows are pretty robust. Did a lot of clean-up of
+    microservices, and refactored processing pipeline to allow running one or
+    more experimental calibration flows alongside of production processing.
+
+- **Next Phase**:
+
+  - [Sep 26] AWS infrastructure deployment
+  - [Oct 3] Local testing of processor and catalog services with Docker Compose,
+    and then Docker Desktop Kubernetes
 
 ---
 
 **🔗 Technical Details**: See [README.md](README.md) for complete developer documentation
+
 **💻 Source Code**: [GitHub Repository](https://github.com/p27mcgee/astro-data-pipeline)

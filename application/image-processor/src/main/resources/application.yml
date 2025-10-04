@@ -22,7 +22,9 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: ${JPA_DDL_AUTO:validate}
+      # For fresh deployments without existing data: use 'update' to let JPA create/update schema
+      # For production with existing data: use 'validate' and enable Flyway for schema migrations
+      ddl-auto: ${JPA_DDL_AUTO:update}
     show-sql: ${JPA_SHOW_SQL:false}
     properties:
       hibernate:
@@ -35,9 +37,15 @@ spring:
         order_updates: true
 
   flyway:
-    enabled: true
+    # Disabled by default for fresh deployments (JPA handles schema creation)
+    # Enable when you have production data to preserve: set FLYWAY_ENABLED=true and JPA_DDL_AUTO=validate
+    enabled: ${FLYWAY_ENABLED:false}
     locations: classpath:db/migration
     baseline-on-migrate: true
+    # When enabling Flyway for the first time on existing database:
+    # 1. Generate migration from current schema
+    # 2. Set baseline-version to match that migration
+    # 3. Run flyway baseline before flyway migrate
 
   servlet:
     multipart:
@@ -101,7 +109,7 @@ management:
 
 logging:
   level:
-    org.stsci.astro: ${LOG_LEVEL_APP:INFO}
+    com.mcgeecahill.astro: ${LOG_LEVEL_APP:INFO}
     org.springframework: ${LOG_LEVEL_SPRING:WARN}
     org.hibernate: ${LOG_LEVEL_HIBERNATE:WARN}
     software.amazon.awssdk: ${LOG_LEVEL_AWS:WARN}
@@ -176,7 +184,7 @@ spring:
 
 logging:
   level:
-    org.stsci.astro: DEBUG
+    com.mcgeecahill.astro: DEBUG
     org.springframework.security: DEBUG
 
 astro:
@@ -227,11 +235,49 @@ astro:
 spring:
   config:
     activate:
+      on-profile: integration-test
+  datasource:
+    url: jdbc:h2:mem:integrationtestdb_${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+
+  flyway:
+    enabled: false
+
+  h2:
+    console:
+      enabled: false
+
+astro:
+  processing:
+    s3:
+      raw-data-bucket: test-raw-bucket
+      processed-data-bucket: test-processed-bucket
+      intermediate-data-bucket: test-intermediate-bucket
+      archive-bucket: test-archive-bucket
+
+    storage:
+      intermediate-bucket: test-intermediate-bucket
+      processed-bucket: test-processed-bucket
+      session-cleanup-enabled: false
+
+---
+
+spring:
+  config:
+    activate:
       on-profile: prod
 
 logging:
   level:
-    org.stsci.astro: INFO
+    com.mcgeecahill.astro: INFO
     org.springframework: WARN
     org.hibernate: WARN
 
@@ -240,11 +286,11 @@ astro:
     parallel:
       max-concurrent-jobs: 8
       thread-pool-size: 16
-    
+
     memory:
       max-heap-size-bytes: 4294967296 # 4GB
       max-image-size-bytes: 1073741824 # 1GB
-    
+
     s3:
       raw-data-bucket: astro-data-pipeline-raw-data-prod
       processed-data-bucket: astro-data-pipeline-processed-data-prod
@@ -259,7 +305,7 @@ astro:
       session-cleanup-delay-hours: 48
       max-intermediate-file-age-hours: 168 # 7 days
       enable-versioning: true
-    
+
     monitoring:
       enable-metrics: true
       enable-tracing: true
