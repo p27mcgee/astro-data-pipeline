@@ -36,7 +36,7 @@ spring:
 logging:
   level:
     org.springframework: WARN
-    org.stsci.astro: INFO
+    com.mcgeecahill.astro: INFO
     org.hibernate: WARN
 
 management:
@@ -53,7 +53,6 @@ test:
     verification: true
 
 ---
-
 spring:
   config:
     activate:
@@ -99,7 +98,7 @@ spring:
 logging:
   level:
     org.springframework: WARN
-    org.stsci.astro: INFO
+    com.mcgeecahill.astro: INFO
     org.hibernate: WARN
 
 management:

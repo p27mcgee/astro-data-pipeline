@@ -1,5 +1,5 @@
 -- Create processing_jobs table with all core fields
--- Based on ProcessingJob entity in org.stsci.astro.processor.entity.ProcessingJob
+-- Based on ProcessingJob entity in com.mcgeecahill.astro.processor.entity.ProcessingJob
 
 CREATE TABLE processing_jobs (
     id                      BIGSERIAL PRIMARY KEY,

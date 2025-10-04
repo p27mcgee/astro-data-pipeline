@@ -27,14 +27,22 @@
         <property name="max" value="2000"/>
     </module>
 
-    <!-- Line length checks -->
+    <!-- Let spotless handle this
+    Line length checks
     <module name="LineLength">
         <property name="fileExtensions" value="java"/>
-        <property name="max" value="120"/>
+      <property name="max" value="100"/>
         <property name="ignorePattern" value="^package.*|^import.*|a href|href|http://|https://|ftp://"/>
     </module>
+    -->
+
+    <!-- Required to support @SuppressWarnings annotations -->
+    <module name="SuppressWarningsFilter"/>
 
     <module name="TreeWalker">
+        <!-- Enable the module to hold suppression info from @SuppressWarnings annotations -->
+        <module name="SuppressWarningsHolder"/>
+
         <!-- Naming Conventions -->
         <module name="ConstantName"/>
         <module name="LocalFinalVariableName"/>
@@ -68,13 +76,15 @@
         <module name="EmptyForIteratorPad"/>
         <module name="GenericWhitespace"/>
         <module name="MethodParamPad"/>
-        <module name="NoWhitespaceAfter"/>
-        <module name="NoWhitespaceBefore"/>
         <module name="OperatorWrap"/>
         <module name="ParenPad"/>
         <module name="TypecastParenPad"/>
+        <!-- let spotless handle this
+        <module name="NoWhitespaceAfter"/>
+        <module name="NoWhitespaceBefore"/>
         <module name="WhitespaceAfter"/>
         <module name="WhitespaceAround"/>
+        -->
 
         <!-- Modifier Checks -->
         <module name="ModifierOrder"/>
@@ -127,7 +137,9 @@
         <module name="UpperEll"/>
 
         <!-- Annotations -->
+        <!-- Disabled: Multi-line annotation arrays are acceptable for readability in complex test configurations
         <module name="AnnotationUseStyle"/>
+        -->
         <module name="MissingDeprecated"/>
         <module name="MissingOverride"/>
         <module name="PackageAnnotation"/>

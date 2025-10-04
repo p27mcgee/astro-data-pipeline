@@ -156,6 +156,41 @@ jobs:
         run: |
           find . -name "gradlew" -exec chmod +x {} \;
 
+      - name: Run Spotless Check (Code Formatting)
+        run: |
+          cd application
+          echo "🔍 Running Spotless code formatting check..."
+          ./gradlew spotlessCheck
+          if [ $? -ne 0 ]; then
+            echo "❌ Code formatting issues detected!"
+            echo "Run './gradlew spotlessApply' locally to fix formatting"
+            exit 1
+          fi
+          echo "✅ Code formatting check passed"
+
+      - name: Run Checkstyle (Code Quality)
+        run: |
+          cd application
+          echo "🔍 Running Checkstyle analysis..."
+          ./gradlew checkstyleMain checkstyleTest
+          if [ $? -ne 0 ]; then
+            echo "❌ Checkstyle violations detected!"
+            echo "Review violations in build/reports/checkstyle/"
+            exit 1
+          fi
+          echo "✅ Checkstyle check passed"
+
+      - name: Upload Checkstyle reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: checkstyle-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            application/*/build/reports/checkstyle/*.html
+            application/*/build/reports/checkstyle/*.xml
+          retention-days: 30
+          if-no-files-found: warn
+
       - name: Run unit tests (H2)
         run: |
           cd application
@@ -169,12 +204,12 @@ jobs:
       - name: Run integration tests (PostgreSQL)
         run: |
           cd application
-          ./gradlew integrationTest
+          ./gradlew integrationTest \
+            -Dspring.profiles.active=ci-integration \
+            -DSPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/astro_test \
+            -DSPRING_DATASOURCE_USERNAME=test_user \
+            -DSPRING_DATASOURCE_PASSWORD=test_password
         env:
-          SPRING_PROFILES_ACTIVE: ci-integration
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/astro_test
-          SPRING_DATASOURCE_USERNAME: test_user
-          SPRING_DATASOURCE_PASSWORD: test_password
           AWS_ACCESS_KEY_ID: test
           AWS_SECRET_ACCESS_KEY: test
           AWS_DEFAULT_REGION: us-east-1
@@ -207,10 +242,6 @@ jobs:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
-
-      - name: Run Checkstyle
-        run: |
-          cd application && ./gradlew checkstyleMain checkstyleTest
 
       - name: Run SpotBugs
         run: |
