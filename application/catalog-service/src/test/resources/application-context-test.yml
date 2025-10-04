@@ -36,7 +36,7 @@ spring:
 logging:
   level:
     org.springframework: WARN
-    org.stsci.astro: INFO
+    com.mcgeecahill.astro: INFO
     org.hibernate: WARN
 
 management:
@@ -99,7 +99,7 @@ spring:
 logging:
   level:
     org.springframework: WARN
-    org.stsci.astro: INFO
+    com.mcgeecahill.astro: INFO
     org.hibernate: WARN
 
 management:

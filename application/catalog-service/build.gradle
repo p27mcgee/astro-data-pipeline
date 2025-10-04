@@ -32,7 +32,7 @@ tasks.register('contextVerificationTest', Test) {
 }
 
 springBoot {
-    mainClass = 'org.stsci.astro.catalog.CatalogServiceApplication'
+    mainClass = 'com.mcgeecahill.astro.catalog.CatalogServiceApplication'
 }
 
 tasks.register('buildDocker', Exec) {
