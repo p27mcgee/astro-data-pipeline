@@ -20,6 +20,9 @@ allprojects {
     }
 }
 
+// required to fix spotbugs issue https://github.com/spotbugs/spotbugs-gradle-plugin/issues/1197
+ext['commons-lang3.version']='3.14.0'
+
 subprojects {
     apply plugin: 'java'
     apply plugin: 'org.springframework.boot'
