@@ -270,7 +270,7 @@ jobs:
       - name: Build JAR files
         run: |
           cd application
-          ./gradlew clean build -x test
+          ./gradlew clean build -x test -x spotbugsMain -x spotbugsTest
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

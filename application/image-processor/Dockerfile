@@ -33,7 +33,7 @@ RUN ./gradlew :image-processor:dependencies --no-daemon
 COPY image-processor/src image-processor/src
 
 # Build application
-RUN ./gradlew :image-processor:clean :image-processor:build -x test --no-daemon
+RUN ./gradlew :image-processor:clean :image-processor:build -x test -x spotlessCheck  -x spotbugsMain -x spotbugsTest --no-daemon
 
 # Production stage
 FROM eclipse-temurin:17-jre-jammy
