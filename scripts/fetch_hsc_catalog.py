@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S bash -c '"$(dirname "$0")/../venv/bin/python" "$0" "$@"'
+# Alternative: Run as: ./venv/bin/python scripts/fetch_hsc_catalog.py
 """
 Fetch Hubble Source Catalog data for test FITS files
 
