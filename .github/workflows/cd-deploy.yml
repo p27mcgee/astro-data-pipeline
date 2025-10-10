@@ -39,8 +39,10 @@ jobs:
     outputs:
       image-processor-image: ${{ steps.image-processor-meta.outputs.tags }}
       catalog-service-image: ${{ steps.catalog-service-meta.outputs.tags }}
+      airflow-image: ${{ steps.airflow-meta.outputs.tags }}
       image-processor-digest: ${{ steps.image-processor-build.outputs.digest }}
       catalog-service-digest: ${{ steps.catalog-service-build.outputs.digest }}
+      airflow-digest: ${{ steps.airflow-build.outputs.digest }}
 
     steps:
     - name: Checkout code
@@ -116,6 +118,17 @@ jobs:
           type=sha,prefix={{branch}}-
           type=raw,value=latest,enable={{is_default_branch}}
 
+    - name: Extract Airflow metadata
+      id: airflow-meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.ECR_REGISTRY }}/astro-airflow
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
     - name: Build and push Image Processor image
       id: image-processor-build
       uses: docker/build-push-action@v5
@@ -147,6 +160,23 @@ jobs:
           BUILD_DATE=${{ fromJSON(steps.catalog-service-meta.outputs.json).labels['org.opencontainers.image.created'] }}
           VERSION=${{ fromJSON(steps.catalog-service-meta.outputs.json).labels['org.opencontainers.image.version'] }}
           REVISION=${{ fromJSON(steps.catalog-service-meta.outputs.json).labels['org.opencontainers.image.revision'] }}
+
+    - name: Build and push Airflow image
+      id: airflow-build
+      uses: docker/build-push-action@v5
+      with:
+        context: ./application/airflow
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.airflow-meta.outputs.tags }}
+        labels: ${{ steps.airflow-meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          AIRFLOW_VERSION=2.7.1
+          BUILD_DATE=${{ fromJSON(steps.airflow-meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          VERSION=${{ fromJSON(steps.airflow-meta.outputs.json).labels['org.opencontainers.image.version'] }}
+          REVISION=${{ fromJSON(steps.airflow-meta.outputs.json).labels['org.opencontainers.image.revision'] }}
 
     # ========== Security Scanning ==========
 

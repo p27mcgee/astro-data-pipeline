@@ -72,7 +72,10 @@ services:
       retries: 5
 
   airflow-init:
-    image: apache/airflow:2.7.1
+    build:
+      context: ./application/airflow
+      dockerfile: Dockerfile
+    image: astro-airflow:${AIRFLOW_VERSION:-0.6.5-alpha.0}
     container_name: astro-airflow-init
     depends_on:
       airflow-postgres:
@@ -93,12 +96,12 @@ services:
         airflow db init
         airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin || true
     volumes:
-      - ./airflow/dags:/opt/airflow/dags
+      - ./application/airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
-      - ./airflow/plugins:/opt/airflow/plugins
+      - ./application/airflow/plugins:/opt/airflow/plugins
 
   airflow-scheduler:
-    image: apache/airflow:2.7.1
+    image: astro-airflow:${AIRFLOW_VERSION:-0.6.5-alpha.0}
     container_name: astro-airflow-scheduler
     depends_on:
       airflow-init:
@@ -109,12 +112,12 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
     command: airflow scheduler
     volumes:
-      - ./airflow/dags:/opt/airflow/dags
+      - ./application/airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
-      - ./airflow/plugins:/opt/airflow/plugins
+      - ./application/airflow/plugins:/opt/airflow/plugins
 
   airflow-webserver:
-    image: apache/airflow:2.7.1
+    image: astro-airflow:${AIRFLOW_VERSION:-0.6.5-alpha.0}
     container_name: astro-airflow-webserver
     depends_on:
       airflow-init:
@@ -127,9 +130,9 @@ services:
       - "8080:8080"
     command: airflow webserver
     volumes:
-      - ./airflow/dags:/opt/airflow/dags
+      - ./application/airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
-      - ./airflow/plugins:/opt/airflow/plugins
+      - ./application/airflow/plugins:/opt/airflow/plugins
 
   prometheus:
     image: prom/prometheus:latest

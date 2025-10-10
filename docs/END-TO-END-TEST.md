@@ -6,7 +6,7 @@ population.
 ## Architecture Flow
 
 ```
-FITS Generation → S3 Upload → Airflow Trigger → Image Processing →
+FITS Generation → S3 Upload → Airflow DAG Trigger → Image Processing →
 Catalog Population → Query Results
 ```
 
@@ -14,20 +14,44 @@ Catalog Population → Query Results
 
 - Docker Desktop running
 - Python 3.11+ with astropy installed
-- `awscli-local` for LocalStack S3 access
+- AWS CLI for LocalStack S3 access
 - `jq` for JSON parsing (optional but recommended)
+- Gradle 8.x (for building services and Airflow image)
+
+## Authentication
+
+**All API endpoints require Basic Authentication:**
+- Username: `admin`
+- Password: `admin`
+
+These credentials are configured in `application.yml` for both services:
+- Image Processor (port 8082)
+- Catalog Service (port 8081)
 
 ## Complete End-to-End Test
 
-### Step 1: Build Docker Images
+### Step 1: Build Custom Airflow Docker Image
 
-First, build the Spring Boot service images:
+**IMPORTANT:** Build the custom Airflow image before starting docker-compose:
 
 ```bash
 # From project root
 cd application
 
-# Build both services
+# Build custom Airflow image with required providers (includes Python validation)
+./gradlew :airflow:buildDocker
+
+# This creates: astro-airflow:0.6.5-alpha.0
+# Includes: AWS, Kubernetes, PostgreSQL, HTTP providers + astropy
+# Validates Python code with flake8 and black before building
+```
+
+### Step 2: Build Spring Boot Service Images
+
+Build the application services:
+
+```bash
+# Still in application directory
 ./gradlew clean build
 
 # Return to project root
@@ -121,25 +145,28 @@ export AWS_DEFAULT_REGION=us-east-1
 pip install awscli-local
 ```
 
-### Step 6: Verify S3 Buckets (Automatic)
+### Step 6: Verify S3 Buckets (Auto-Created)
 
-S3 buckets are created automatically by the LocalStack init script. Verify they exist:
+S3 buckets are automatically created by the LocalStack init script on startup. Verify they exist:
 
 ```bash
-# Verify buckets created automatically
+# Verify buckets were auto-created
 aws --endpoint-url=http://localhost:4566 s3 ls
+
+# Check LocalStack initialization logs
+docker compose logs localstack | grep "Creating S3 buckets"
 ```
 
 **Expected output:**
 
 ```
-2025-10-06 13:44:34 astro-archive
-2025-10-06 13:44:33 astro-intermediate-data
-2025-10-06 13:44:33 astro-processed-data
-2025-10-06 13:44:30 astro-raw-data
+2025-10-10 astro-archive
+2025-10-10 astro-intermediate-data
+2025-10-10 astro-processed-data
+2025-10-10 astro-raw-data
 ```
 
-**Note:** Buckets are created automatically via `scripts/localstack/init-aws.sh` mounted in docker-compose.yml
+**Note:** Buckets are created automatically via `scripts/localstack/init-aws.sh` which is mounted to `/etc/localstack/init/ready.d/` in the LocalStack container.
 
 ### Step 7: Upload FITS File to S3
 
@@ -157,16 +184,33 @@ awslocal s3 cp "$FITS_FILE" s3://astro-raw-data/raw/
 awslocal s3 ls s3://astro-raw-data/raw/
 ```
 
-### Step 8: Trigger Processing Job
+### Step 8: Trigger Processing via Airflow (Recommended)
 
-Submit a processing job via REST API:
+**Option A: Using Airflow DAG (Production Workflow)**
+
+```bash
+# List available DAGs
+docker compose exec airflow-scheduler airflow dags list
+
+# Unpause the research processing workflow
+docker compose exec airflow-scheduler airflow dags unpause research_processing_workflow
+
+# Trigger DAG with S3 file location
+docker compose exec airflow-scheduler airflow dags trigger research_processing_workflow \
+  --conf '{"input_s3_bucket": "astro-raw-data", "input_s3_key": "fits/test-observation.fits", "session_id": "e2e-test-001"}'
+
+# Monitor DAG execution in Airflow UI
+open http://localhost:8080  # Login: admin/admin
+```
+
+**Option B: Direct API Call (Alternative - requires authentication)**
 
 ```bash
 # Extract just the filename
 FITS_FILENAME=$(basename "$FITS_FILE")
 
-# Submit processing job
-curl -X POST http://localhost:8082/api/v1/processing/jobs/s3 \
+# Submit processing job with authentication
+curl -u admin:admin -X POST http://localhost:8082/api/v1/processing/jobs/s3 \
   -H "Content-Type: application/json" \
   -d "{
     \"inputBucket\": \"astro-raw-data\",
@@ -179,6 +223,8 @@ curl -X POST http://localhost:8082/api/v1/processing/jobs/s3 \
 
 # Save the job ID from the response
 ```
+
+**Note:** Direct API currently returns 405 Method Not Allowed for S3 endpoints. Use Airflow DAG workflow instead.
 
 **Expected response:**
 
@@ -196,17 +242,20 @@ curl -X POST http://localhost:8082/api/v1/processing/jobs/s3 \
 
 ### Step 9: Monitor Processing Status
 
-Check job progress:
+Check job progress (with authentication):
 
 ```bash
-# Get job ID from previous step or list all jobs
-JOB_ID=$(curl -s http://localhost:8082/api/v1/processing/jobs | jq -r '.[0].jobId')
+# List all jobs with authentication
+curl -u admin:admin -s http://localhost:8082/api/v1/processing/jobs | jq '.content[] | {jobId, status, processingType}'
+
+# Get job ID from response
+JOB_ID=$(curl -u admin:admin -s http://localhost:8082/api/v1/processing/jobs | jq -r '.content[0].jobId')
 
 # Monitor job status (repeat until COMPLETED)
-watch -n 5 "curl -s http://localhost:8082/api/v1/processing/jobs/$JOB_ID | jq '.status'"
+watch -n 5 "curl -u admin:admin -s http://localhost:8082/api/v1/processing/jobs/$JOB_ID | jq '.status'"
 
-# Get full job details
-curl http://localhost:8082/api/v1/processing/jobs/$JOB_ID | jq
+# Get full job details with authentication
+curl -u admin:admin http://localhost:8082/api/v1/processing/jobs/$JOB_ID | jq
 ```
 
 **Expected statuses:**
@@ -460,6 +509,42 @@ docker-compose logs -f catalog-service
 
 # Verify database connection
 docker exec -it astro-catalog-service curl http://localhost:8081/actuator/health
+```
+
+### Airflow DAG Import Errors
+
+Some production DAGs have import errors due to provider compatibility issues with Airflow 2.7.1:
+
+```bash
+# Check for DAG import errors
+docker compose exec airflow-scheduler airflow dags list-import-errors
+
+# View specific errors
+docker compose logs airflow-scheduler | grep -i error
+
+# Known issues:
+# - telescope_data_processing.py: S3DeleteObjectOperator import error
+# - batch_processing_dag.py: Kubernetes provider missing
+# - data_quality_monitoring.py: Missing start_date parameter
+# - research_workflow_templates.py: Plugin import error
+
+# Working DAG:
+# - research_processing_workflow: ✅ Fully functional
+```
+
+**Workaround:** Use the `research_processing_workflow` DAG which is fully operational.
+
+### Authentication Issues
+
+If you get 401 Unauthorized errors:
+
+```bash
+# All API calls require Basic Auth
+curl -u admin:admin http://localhost:8082/api/v1/processing/jobs
+
+# Verify credentials in application.yml:
+# spring.security.user.name=admin
+# spring.security.user.password=admin
 ```
 
 ## Success Criteria

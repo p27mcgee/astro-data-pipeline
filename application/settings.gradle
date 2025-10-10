@@ -2,3 +2,4 @@ rootProject.name = 'astro-data-pipeline'
 
 include 'image-processor'
 include 'catalog-service'
+include 'airflow'

@@ -33,20 +33,22 @@ class GranularProcessingOperator(BaseOperator):
     """
 
     template_fields: Sequence[str] = (
-        'image_path', 'calibration_path', 'session_id', 'parameters',
-        'output_bucket', 'output_path'
+        "image_path",
+        "calibration_path",
+        "session_id",
+        "parameters",
+        "output_bucket",
+        "output_path",
     )
 
-    template_fields_renderers = {
-        'parameters': 'json'
-    }
+    template_fields_renderers = {"parameters": "json"}
 
     @apply_defaults
     def __init__(
         self,
         image_path: str,
         session_id: str,
-        algorithm: str = 'default',
+        algorithm: str = "default",
         parameters: Optional[Dict[str, Any]] = None,
         calibration_path: Optional[str] = None,
         output_bucket: Optional[str] = None,
@@ -58,7 +60,7 @@ class GranularProcessingOperator(BaseOperator):
         retry_delay: timedelta = timedelta(minutes=3),
         # Processing context parameters
         processing_id: Optional[str] = None,
-        processing_type: str = 'production',
+        processing_type: str = "production",
         experiment_name: Optional[str] = None,
         researcher_id: Optional[str] = None,
         researcher_email: Optional[str] = None,
@@ -70,7 +72,7 @@ class GranularProcessingOperator(BaseOperator):
         workflow_version: Optional[str] = None,
         use_active_workflow: bool = True,
         force_workflow_version: bool = False,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.image_path = image_path
@@ -101,65 +103,62 @@ class GranularProcessingOperator(BaseOperator):
         self.force_workflow_version = force_workflow_version
 
         # Get base URL from Airflow Variables
-        self.base_url = Variable.get(
-            "image_processor_base_url",
-            "http://image-processor-service:8080"
-        )
+        self.base_url = Variable.get("image_processor_base_url", "http://image-processor-service:8080")
 
     def _build_request_payload(self) -> Dict[str, Any]:
         """Build the request payload for granular processing."""
         payload = {
-            'imagePath': self.image_path,
-            'sessionId': self.session_id,
-            'algorithm': self.algorithm,
-            'parameters': self.parameters,
-            'preserveMetadata': self.preserve_metadata,
-            'enableMetrics': self.enable_metrics,
-            'processingType': self.processing_type
+            "imagePath": self.image_path,
+            "sessionId": self.session_id,
+            "algorithm": self.algorithm,
+            "parameters": self.parameters,
+            "preserveMetadata": self.preserve_metadata,
+            "enableMetrics": self.enable_metrics,
+            "processingType": self.processing_type,
         }
 
         if self.calibration_path:
-            payload['calibrationPath'] = self.calibration_path
+            payload["calibrationPath"] = self.calibration_path
 
         if self.output_bucket:
-            payload['outputBucket'] = self.output_bucket
+            payload["outputBucket"] = self.output_bucket
 
         if self.output_path:
-            payload['outputPath'] = self.output_path
+            payload["outputPath"] = self.output_path
 
         if self.processing_id:
-            payload['processingId'] = self.processing_id
+            payload["processingId"] = self.processing_id
 
         # Add experiment context for experimental processing
-        if self.processing_type == 'experimental':
+        if self.processing_type == "experimental":
             experiment_context = {}
             if self.experiment_name:
-                experiment_context['experimentName'] = self.experiment_name
+                experiment_context["experimentName"] = self.experiment_name
             if self.researcher_id:
-                experiment_context['researcherId'] = self.researcher_id
+                experiment_context["researcherId"] = self.researcher_id
             if self.researcher_email:
-                experiment_context['researcherEmail'] = self.researcher_email
+                experiment_context["researcherEmail"] = self.researcher_email
             if self.project_id:
-                experiment_context['projectId'] = self.project_id
+                experiment_context["projectId"] = self.project_id
 
             if experiment_context:
-                payload['experimentContext'] = experiment_context
+                payload["experimentContext"] = experiment_context
 
         # Add production context for production processing
-        elif self.processing_type == 'production':
+        elif self.processing_type == "production":
             production_context = {}
             if self.observation_id:
-                production_context['observationId'] = self.observation_id
+                production_context["observationId"] = self.observation_id
             if self.instrument_id:
-                production_context['instrumentId'] = self.instrument_id
+                production_context["instrumentId"] = self.instrument_id
 
             if production_context:
-                payload['productionContext'] = production_context
+                payload["productionContext"] = production_context
 
         # Add workflow versioning information
         if self.workflow_name and self.workflow_version:
-            payload['workflowName'] = self.workflow_name
-            payload['workflowVersion'] = self.workflow_version
+            payload["workflowName"] = self.workflow_name
+            payload["workflowVersion"] = self.workflow_version
 
         return payload
 
@@ -172,7 +171,7 @@ class GranularProcessingOperator(BaseOperator):
                 return None
 
             url = f"{self.base_url}/api/v1/workflows/active"
-            params = {'processingType': self.processing_type}
+            params = {"processingType": self.processing_type}
 
             response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
@@ -181,19 +180,21 @@ class GranularProcessingOperator(BaseOperator):
 
             # Find the active workflow for this step
             for workflow in active_workflows:
-                if workflow.get('workflowName') == workflow_name:
-                    logger.info(f"Using active workflow {workflow_name} version {workflow.get('workflowVersion')} "
-                              f"(deterministic processing - always 100%)")
+                if workflow.get("workflowName") == workflow_name:
+                    logger.info(
+                        f"Using active workflow {workflow_name} version {workflow.get('workflowVersion')} "
+                        f"(deterministic processing - always 100%)"
+                    )
 
                     return {
-                        'workflowName': workflow.get('workflowName'),
-                        'workflowVersion': workflow.get('workflowVersion'),
-                        'deterministic': True,
-                        'activeWorkflowMetadata': {
-                            'activatedBy': workflow.get('activatedBy'),
-                            'activatedAt': workflow.get('activatedAt'),
-                            'algorithmConfiguration': workflow.get('algorithmConfiguration', {})
-                        }
+                        "workflowName": workflow.get("workflowName"),
+                        "workflowVersion": workflow.get("workflowVersion"),
+                        "deterministic": True,
+                        "activeWorkflowMetadata": {
+                            "activatedBy": workflow.get("activatedBy"),
+                            "activatedAt": workflow.get("activatedAt"),
+                            "algorithmConfiguration": workflow.get("algorithmConfiguration", {}),
+                        },
                     }
 
             logger.warning(f"No active workflow found for {workflow_name} in {self.processing_type} mode")
@@ -206,10 +207,10 @@ class GranularProcessingOperator(BaseOperator):
     def _map_step_to_workflow(self, step_type: str) -> Optional[str]:
         """Map processing step type to workflow name."""
         step_workflow_mapping = {
-            'bias-subtract': 'bias-subtraction',
-            'dark-subtract': 'dark-subtraction',
-            'flat-correct': 'flat-field-correction',
-            'cosmic-ray-remove': 'cosmic-ray-removal'
+            "bias-subtract": "bias-subtraction",
+            "dark-subtract": "dark-subtraction",
+            "flat-correct": "flat-field-correction",
+            "cosmic-ray-remove": "cosmic-ray-removal",
         }
         return step_workflow_mapping.get(step_type)
 
@@ -219,10 +220,7 @@ class GranularProcessingOperator(BaseOperator):
 
         try:
             response = requests.post(
-                url,
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=self.timeout
+                url, json=payload, headers={"Content-Type": "application/json"}, timeout=self.timeout
             )
             response.raise_for_status()
 
@@ -235,7 +233,7 @@ class GranularProcessingOperator(BaseOperator):
             raise AirflowException(f"Processing step {endpoint} timed out after {self.timeout} seconds")
         except requests.exceptions.RequestException as e:
             logger.error(f"Processing step {endpoint} failed: {e}")
-            if hasattr(e, 'response') and e.response is not None:
+            if hasattr(e, "response") and e.response is not None:
                 try:
                     error_detail = e.response.json()
                     logger.error(f"Error details: {error_detail}")
@@ -245,12 +243,9 @@ class GranularProcessingOperator(BaseOperator):
 
     def _store_metrics(self, context: Dict, result: Dict[str, Any]) -> None:
         """Store processing metrics in XCom for analysis."""
-        if 'processingMetrics' in result:
-            metrics = result['processingMetrics']
-            context['ti'].xcom_push(
-                key=f"{self.task_id}_metrics",
-                value=metrics
-            )
+        if "processingMetrics" in result:
+            metrics = result["processingMetrics"]
+            context["ti"].xcom_push(key=f"{self.task_id}_metrics", value=metrics)
             logger.info(f"Stored processing metrics for {self.task_id}")
 
     def execute(self, context: Dict) -> str:
@@ -266,21 +261,12 @@ class BiasSubtractionOperator(GranularProcessingOperator):
     """
 
     @apply_defaults
-    def __init__(
-        self,
-        *args,
-        overscan_correction: bool = True,
-        fit_method: str = 'median',
-        **kwargs
-    ) -> None:
+    def __init__(self, *args, overscan_correction: bool = True, fit_method: str = "median", **kwargs) -> None:
         # Set default bias subtraction parameters
-        if 'parameters' not in kwargs:
-            kwargs['parameters'] = {}
+        if "parameters" not in kwargs:
+            kwargs["parameters"] = {}
 
-        kwargs['parameters'].update({
-            'overscanCorrection': overscan_correction,
-            'fitMethod': fit_method
-        })
+        kwargs["parameters"].update({"overscanCorrection": overscan_correction, "fitMethod": fit_method})
 
         super().__init__(*args, **kwargs)
 
@@ -290,19 +276,19 @@ class BiasSubtractionOperator(GranularProcessingOperator):
 
         # Get active workflow info if enabled
         if self.use_active_workflow and not self.force_workflow_version and not self.workflow_name:
-            workflow_info = self._get_active_workflow_info('bias-subtract')
+            workflow_info = self._get_active_workflow_info("bias-subtract")
             if workflow_info:
                 logger.info(f"Using active workflow: {workflow_info}")
                 # Store workflow info in XCom for downstream tasks
-                context['ti'].xcom_push(key='active_workflow_info', value=workflow_info)
+                context["ti"].xcom_push(key="active_workflow_info", value=workflow_info)
 
         payload = self._build_request_payload()
-        result = self._make_request('bias-subtract', payload)
+        result = self._make_request("bias-subtract", payload)
 
         # Store metrics
         self._store_metrics(context, result)
 
-        output_path = result['outputPath']
+        output_path = result["outputPath"]
         logger.info(f"Bias subtraction completed: {output_path}")
 
         return output_path
@@ -316,21 +302,12 @@ class DarkSubtractionOperator(GranularProcessingOperator):
     """
 
     @apply_defaults
-    def __init__(
-        self,
-        *args,
-        auto_scale: bool = True,
-        temperature_correction: bool = False,
-        **kwargs
-    ) -> None:
+    def __init__(self, *args, auto_scale: bool = True, temperature_correction: bool = False, **kwargs) -> None:
         # Set default dark subtraction parameters
-        if 'parameters' not in kwargs:
-            kwargs['parameters'] = {}
+        if "parameters" not in kwargs:
+            kwargs["parameters"] = {}
 
-        kwargs['parameters'].update({
-            'autoScale': auto_scale,
-            'temperatureCorrection': temperature_correction
-        })
+        kwargs["parameters"].update({"autoScale": auto_scale, "temperatureCorrection": temperature_correction})
 
         super().__init__(*args, **kwargs)
 
@@ -339,12 +316,12 @@ class DarkSubtractionOperator(GranularProcessingOperator):
         logger.info(f"Starting dark subtraction for {self.image_path}")
 
         payload = self._build_request_payload()
-        result = self._make_request('dark-subtract', payload)
+        result = self._make_request("dark-subtract", payload)
 
         # Store metrics
         self._store_metrics(context, result)
 
-        output_path = result['outputPath']
+        output_path = result["outputPath"]
         logger.info(f"Dark subtraction completed: {output_path}")
 
         return output_path
@@ -361,20 +338,22 @@ class FlatFieldCorrectionOperator(GranularProcessingOperator):
     def __init__(
         self,
         *args,
-        normalization_method: str = 'median',
-        illumination_model: str = 'polynomial',
+        normalization_method: str = "median",
+        illumination_model: str = "polynomial",
         mask_stars: bool = True,
-        **kwargs
+        **kwargs,
     ) -> None:
         # Set default flat correction parameters
-        if 'parameters' not in kwargs:
-            kwargs['parameters'] = {}
+        if "parameters" not in kwargs:
+            kwargs["parameters"] = {}
 
-        kwargs['parameters'].update({
-            'normalizationMethod': normalization_method,
-            'illuminationModel': illumination_model,
-            'maskStars': mask_stars
-        })
+        kwargs["parameters"].update(
+            {
+                "normalizationMethod": normalization_method,
+                "illuminationModel": illumination_model,
+                "maskStars": mask_stars,
+            }
+        )
 
         super().__init__(*args, **kwargs)
 
@@ -383,12 +362,12 @@ class FlatFieldCorrectionOperator(GranularProcessingOperator):
         logger.info(f"Starting flat field correction for {self.image_path}")
 
         payload = self._build_request_payload()
-        result = self._make_request('flat-correct', payload)
+        result = self._make_request("flat-correct", payload)
 
         # Store metrics
         self._store_metrics(context, result)
 
-        output_path = result['outputPath']
+        output_path = result["outputPath"]
         logger.info(f"Flat field correction completed: {output_path}")
 
         return output_path
@@ -402,23 +381,12 @@ class CosmicRayRemovalOperator(GranularProcessingOperator):
     """
 
     @apply_defaults
-    def __init__(
-        self,
-        *args,
-        sigclip: float = 4.5,
-        star_preservation: bool = True,
-        niter: int = 4,
-        **kwargs
-    ) -> None:
+    def __init__(self, *args, sigclip: float = 4.5, star_preservation: bool = True, niter: int = 4, **kwargs) -> None:
         # Set default cosmic ray removal parameters
-        if 'parameters' not in kwargs:
-            kwargs['parameters'] = {}
+        if "parameters" not in kwargs:
+            kwargs["parameters"] = {}
 
-        kwargs['parameters'].update({
-            'sigclip': sigclip,
-            'starPreservation': star_preservation,
-            'niter': niter
-        })
+        kwargs["parameters"].update({"sigclip": sigclip, "starPreservation": star_preservation, "niter": niter})
 
         super().__init__(*args, **kwargs)
 
@@ -427,13 +395,13 @@ class CosmicRayRemovalOperator(GranularProcessingOperator):
         logger.info(f"Starting cosmic ray removal for {self.image_path}")
 
         payload = self._build_request_payload()
-        result = self._make_request('cosmic-ray-remove', payload)
+        result = self._make_request("cosmic-ray-remove", payload)
 
         # Store metrics
         self._store_metrics(context, result)
 
-        output_path = result['outputPath']
-        cosmic_rays_removed = result.get('processingMetrics', {}).get('cosmicRaysRemoved', 0)
+        output_path = result["outputPath"]
+        cosmic_rays_removed = result.get("processingMetrics", {}).get("cosmicRaysRemoved", 0)
         logger.info(f"Cosmic ray removal completed: {output_path} ({cosmic_rays_removed} cosmic rays removed)")
 
         return output_path
@@ -446,24 +414,16 @@ class AlgorithmDiscoveryOperator(BaseOperator):
     Queries the algorithm registry to check availability and get algorithm information.
     """
 
-    template_fields: Sequence[str] = ('algorithm_type',)
+    template_fields: Sequence[str] = ("algorithm_type",)
 
     @apply_defaults
-    def __init__(
-        self,
-        algorithm_type: str,
-        require_supported: bool = True,
-        **kwargs
-    ) -> None:
+    def __init__(self, algorithm_type: str, require_supported: bool = True, **kwargs) -> None:
         super().__init__(**kwargs)
         self.algorithm_type = algorithm_type
         self.require_supported = require_supported
 
         # Get base URL from Airflow Variables
-        self.base_url = Variable.get(
-            "image_processor_base_url",
-            "http://image-processor-service:8080"
-        )
+        self.base_url = Variable.get("image_processor_base_url", "http://image-processor-service:8080")
 
     def execute(self, context: Dict) -> List[Dict[str, Any]]:
         """Discover available algorithms for the specified type."""
@@ -476,15 +436,12 @@ class AlgorithmDiscoveryOperator(BaseOperator):
             algorithms = response.json()
 
             if self.require_supported:
-                algorithms = [algo for algo in algorithms if algo.get('supported', False)]
+                algorithms = [algo for algo in algorithms if algo.get("supported", False)]
 
             logger.info(f"Found {len(algorithms)} algorithms for {self.algorithm_type}")
 
             # Store in XCom for downstream tasks
-            context['ti'].xcom_push(
-                key=f"{self.algorithm_type}_algorithms",
-                value=algorithms
-            )
+            context["ti"].xcom_push(key=f"{self.algorithm_type}_algorithms", value=algorithms)
 
             return algorithms
 
@@ -500,14 +457,9 @@ class CustomWorkflowOperator(BaseOperator):
     Orchestrates multiple processing steps in sequence with custom algorithms and parameters.
     """
 
-    template_fields: Sequence[str] = (
-        'input_image_path', 'session_id', 'workflow_steps', 'output_configuration'
-    )
+    template_fields: Sequence[str] = ("input_image_path", "session_id", "workflow_steps", "output_configuration")
 
-    template_fields_renderers = {
-        'workflow_steps': 'json',
-        'output_configuration': 'json'
-    }
+    template_fields_renderers = {"workflow_steps": "json", "output_configuration": "json"}
 
     @apply_defaults
     def __init__(
@@ -517,7 +469,7 @@ class CustomWorkflowOperator(BaseOperator):
         workflow_steps: List[Dict[str, Any]],
         output_configuration: Optional[Dict[str, Any]] = None,
         timeout: int = 1800,  # 30 minutes for complete workflow
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.input_image_path = input_image_path
@@ -527,40 +479,31 @@ class CustomWorkflowOperator(BaseOperator):
         self.timeout = timeout
 
         # Get base URL from Airflow Variables
-        self.base_url = Variable.get(
-            "image_processor_base_url",
-            "http://image-processor-service:8080"
-        )
+        self.base_url = Variable.get("image_processor_base_url", "http://image-processor-service:8080")
 
     def execute(self, context: Dict) -> Dict[str, Any]:
         """Execute custom workflow with multiple processing steps."""
         url = f"{self.base_url}/api/v1/processing/workflows/custom"
 
         payload = {
-            'inputImagePath': self.input_image_path,
-            'sessionId': self.session_id,
-            'steps': self.workflow_steps,
-            'outputConfiguration': self.output_configuration
+            "inputImagePath": self.input_image_path,
+            "sessionId": self.session_id,
+            "steps": self.workflow_steps,
+            "outputConfiguration": self.output_configuration,
         }
 
         try:
             logger.info(f"Starting custom workflow with {len(self.workflow_steps)} steps")
 
             response = requests.post(
-                url,
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=self.timeout
+                url, json=payload, headers={"Content-Type": "application/json"}, timeout=self.timeout
             )
             response.raise_for_status()
 
             result = response.json()
 
             # Store comprehensive workflow metrics
-            context['ti'].xcom_push(
-                key='workflow_metrics',
-                value=result.get('workflowMetrics', {})
-            )
+            context["ti"].xcom_push(key="workflow_metrics", value=result.get("workflowMetrics", {}))
 
             logger.info(f"Custom workflow completed: {result['finalOutputPath']}")
 
@@ -580,15 +523,15 @@ class IntermediateResultsOperator(BaseOperator):
     Lists, retrieves, and manages intermediate files created during granular processing.
     """
 
-    template_fields: Sequence[str] = ('session_id',)
+    template_fields: Sequence[str] = ("session_id",)
 
     @apply_defaults
     def __init__(
         self,
         session_id: str,
-        operation: str = 'list',  # 'list', 'cleanup', 'move'
+        operation: str = "list",  # 'list', 'cleanup', 'move'
         keep_final_result: bool = True,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.session_id = session_id
@@ -596,16 +539,13 @@ class IntermediateResultsOperator(BaseOperator):
         self.keep_final_result = keep_final_result
 
         # Get base URL from Airflow Variables
-        self.base_url = Variable.get(
-            "image_processor_base_url",
-            "http://image-processor-service:8080"
-        )
+        self.base_url = Variable.get("image_processor_base_url", "http://image-processor-service:8080")
 
     def execute(self, context: Dict) -> Any:
         """Execute intermediate results operation."""
-        if self.operation == 'list':
+        if self.operation == "list":
             return self._list_intermediate_results(context)
-        elif self.operation == 'cleanup':
+        elif self.operation == "cleanup":
             return self._cleanup_intermediate_results(context)
         else:
             raise AirflowException(f"Unsupported operation: {self.operation}")
@@ -622,10 +562,7 @@ class IntermediateResultsOperator(BaseOperator):
             logger.info(f"Found {len(intermediate_files)} intermediate files for session {self.session_id}")
 
             # Store in XCom
-            context['ti'].xcom_push(
-                key='intermediate_files',
-                value=intermediate_files
-            )
+            context["ti"].xcom_push(key="intermediate_files", value=intermediate_files)
 
             return intermediate_files
 
@@ -643,16 +580,13 @@ class IntermediateResultsOperator(BaseOperator):
 
         # In a real implementation, this would call the cleanup endpoint
         cleanup_result = {
-            'session_id': self.session_id,
-            'files_cleaned': 0,  # Would be actual count
-            'final_result_preserved': self.keep_final_result,
-            'cleanup_completed': True
+            "session_id": self.session_id,
+            "files_cleaned": 0,  # Would be actual count
+            "final_result_preserved": self.keep_final_result,
+            "cleanup_completed": True,
         }
 
-        context['ti'].xcom_push(
-            key='cleanup_result',
-            value=cleanup_result
-        )
+        context["ti"].xcom_push(key="cleanup_result", value=cleanup_result)
 
         return cleanup_result
 
@@ -660,6 +594,7 @@ class IntermediateResultsOperator(BaseOperator):
 # =====================================================
 # New Workflow-Aware Operators
 # =====================================================
+
 
 class ActiveWorkflowOperator(BaseOperator):
     """
@@ -670,9 +605,7 @@ class ActiveWorkflowOperator(BaseOperator):
     automatically discovering and using active workflow versions.
     """
 
-    template_fields: Sequence[str] = (
-        'image_path', 'session_id', 'workflow_type', 'processing_type'
-    )
+    template_fields: Sequence[str] = ("image_path", "session_id", "workflow_type", "processing_type")
 
     @apply_defaults
     def __init__(
@@ -680,10 +613,10 @@ class ActiveWorkflowOperator(BaseOperator):
         image_path: str,
         session_id: str,
         workflow_type: str,  # e.g., 'cosmic-ray-removal', 'bias-subtraction'
-        processing_type: str = 'production',
-        fallback_algorithm: str = 'default',
+        processing_type: str = "production",
+        fallback_algorithm: str = "default",
         timeout: int = 300,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.image_path = image_path
@@ -694,10 +627,7 @@ class ActiveWorkflowOperator(BaseOperator):
         self.timeout = timeout
 
         # Get base URL from Airflow Variables
-        self.base_url = Variable.get(
-            "image_processor_base_url",
-            "http://image-processor-service:8080"
-        )
+        self.base_url = Variable.get("image_processor_base_url", "http://image-processor-service:8080")
 
     def execute(self, context: Dict) -> Dict[str, Any]:
         """Execute processing using the active workflow version."""
@@ -710,30 +640,30 @@ class ActiveWorkflowOperator(BaseOperator):
 
         # Build processing request
         payload = {
-            'imagePath': self.image_path,
-            'sessionId': self.session_id,
-            'workflowName': active_workflow['workflowName'],
-            'workflowVersion': active_workflow['workflowVersion'],
-            'processingType': self.processing_type,
-            'useActiveWorkflow': True
+            "imagePath": self.image_path,
+            "sessionId": self.session_id,
+            "workflowName": active_workflow["workflowName"],
+            "workflowVersion": active_workflow["workflowVersion"],
+            "processingType": self.processing_type,
+            "useActiveWorkflow": True,
         }
 
         # Add algorithm configuration from active workflow
-        if 'algorithmConfiguration' in active_workflow:
-            algorithm_config = active_workflow['algorithmConfiguration']
-            payload['algorithm'] = algorithm_config.get('algorithm', self.fallback_algorithm)
-            payload['parameters'] = algorithm_config.get('parameters', {})
+        if "algorithmConfiguration" in active_workflow:
+            algorithm_config = active_workflow["algorithmConfiguration"]
+            payload["algorithm"] = algorithm_config.get("algorithm", self.fallback_algorithm)
+            payload["parameters"] = algorithm_config.get("parameters", {})
 
         # Store workflow selection info in XCom
-        context['ti'].xcom_push(
-            key='selected_workflow',
+        context["ti"].xcom_push(
+            key="selected_workflow",
             value={
-                'workflowName': active_workflow['workflowName'],
-                'workflowVersion': active_workflow['workflowVersion'],
-                'deterministicProcessing': True,
-                'activatedBy': active_workflow.get('activatedBy'),
-                'selectionTime': context['ts']
-            }
+                "workflowName": active_workflow["workflowName"],
+                "workflowVersion": active_workflow["workflowVersion"],
+                "deterministicProcessing": True,
+                "activatedBy": active_workflow.get("activatedBy"),
+                "selectionTime": context["ts"],
+            },
         )
 
         # Execute processing
@@ -743,17 +673,17 @@ class ActiveWorkflowOperator(BaseOperator):
         logger.info(f"Active workflow processing completed: {result.get('outputPath')}")
 
         return {
-            'outputPath': result.get('outputPath'),
-            'processingId': result.get('processingId'),
-            'workflowUsed': active_workflow,
-            'processingMetrics': result.get('processingMetrics', {})
+            "outputPath": result.get("outputPath"),
+            "processingId": result.get("processingId"),
+            "workflowUsed": active_workflow,
+            "processingMetrics": result.get("processingMetrics", {}),
         }
 
     def _get_active_workflow(self) -> Optional[Dict[str, Any]]:
         """Get the active workflow for the specified type."""
         try:
             url = f"{self.base_url}/api/v1/workflows/active"
-            params = {'processingType': self.processing_type}
+            params = {"processingType": self.processing_type}
 
             response = requests.get(url, params=params, timeout=30)
             response.raise_for_status()
@@ -762,10 +692,12 @@ class ActiveWorkflowOperator(BaseOperator):
 
             # Find matching workflow
             for workflow in active_workflows:
-                if workflow.get('workflowName') == self.workflow_type:
-                    logger.info(f"Selected active workflow: {workflow.get('workflowName')} "
-                              f"version {workflow.get('workflowVersion')} "
-                              f"(deterministic - always 100%)")
+                if workflow.get("workflowName") == self.workflow_type:
+                    logger.info(
+                        f"Selected active workflow: {workflow.get('workflowName')} "
+                        f"version {workflow.get('workflowVersion')} "
+                        f"(deterministic - always 100%)"
+                    )
                     return workflow
 
             logger.warning(f"No active workflow found for {self.workflow_type}")
@@ -778,12 +710,12 @@ class ActiveWorkflowOperator(BaseOperator):
     def _get_processing_endpoint(self) -> str:
         """Map workflow type to processing endpoint."""
         endpoint_mapping = {
-            'bias-subtraction': 'bias-subtract',
-            'dark-subtraction': 'dark-subtract',
-            'flat-field-correction': 'flat-correct',
-            'cosmic-ray-removal': 'cosmic-ray-remove'
+            "bias-subtraction": "bias-subtract",
+            "dark-subtraction": "dark-subtract",
+            "flat-field-correction": "flat-correct",
+            "cosmic-ray-removal": "cosmic-ray-remove",
         }
-        return endpoint_mapping.get(self.workflow_type, 'process')
+        return endpoint_mapping.get(self.workflow_type, "process")
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Make HTTP request to processing endpoint."""
@@ -791,10 +723,7 @@ class ActiveWorkflowOperator(BaseOperator):
 
         try:
             response = requests.post(
-                url,
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=self.timeout
+                url, json=payload, headers={"Content-Type": "application/json"}, timeout=self.timeout
             )
             response.raise_for_status()
             return response.json()
@@ -812,7 +741,11 @@ class WorkflowComparisonOperator(BaseOperator):
     """
 
     template_fields: Sequence[str] = (
-        'image_path', 'session_id', 'workflow_name', 'baseline_version', 'comparison_version'
+        "image_path",
+        "session_id",
+        "workflow_name",
+        "baseline_version",
+        "comparison_version",
     )
 
     @apply_defaults
@@ -823,8 +756,8 @@ class WorkflowComparisonOperator(BaseOperator):
         workflow_name: str,
         baseline_version: str,
         comparison_version: str,
-        processing_type: str = 'experimental',
-        **kwargs
+        processing_type: str = "experimental",
+        **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.image_path = image_path
@@ -835,10 +768,7 @@ class WorkflowComparisonOperator(BaseOperator):
         self.processing_type = processing_type
 
         # Get base URL from Airflow Variables
-        self.base_url = Variable.get(
-            "image_processor_base_url",
-            "http://image-processor-service:8080"
-        )
+        self.base_url = Variable.get("image_processor_base_url", "http://image-processor-service:8080")
 
     def execute(self, context: Dict) -> Dict[str, Any]:
         """Execute workflow comparison."""
@@ -847,9 +777,9 @@ class WorkflowComparisonOperator(BaseOperator):
         # Get comparison results from API
         url = f"{self.base_url}/api/v1/workflows/{self.workflow_name}/compare"
         params = {
-            'baselineVersion': self.baseline_version,
-            'comparisonVersion': self.comparison_version,
-            'processingType': self.processing_type
+            "baselineVersion": self.baseline_version,
+            "comparisonVersion": self.comparison_version,
+            "processingType": self.processing_type,
         }
 
         try:
@@ -859,13 +789,10 @@ class WorkflowComparisonOperator(BaseOperator):
             comparison_result = response.json()
 
             # Store detailed comparison in XCom
-            context['ti'].xcom_push(
-                key='workflow_comparison',
-                value=comparison_result
-            )
+            context["ti"].xcom_push(key="workflow_comparison", value=comparison_result)
 
             # Log key findings
-            recommendation = comparison_result.get('recommendation', 'No recommendation available')
+            recommendation = comparison_result.get("recommendation", "No recommendation available")
             logger.info(f"Workflow comparison completed. Recommendation: {recommendation}")
 
             return comparison_result
@@ -882,9 +809,7 @@ class WorkflowPromotionOperator(BaseOperator):
     Handles the complete promotion process including validation and activation.
     """
 
-    template_fields: Sequence[str] = (
-        'experiment_name', 'new_production_version', 'promoted_by'
-    )
+    template_fields: Sequence[str] = ("experiment_name", "new_production_version", "promoted_by")
 
     @apply_defaults
     def __init__(
@@ -895,7 +820,7 @@ class WorkflowPromotionOperator(BaseOperator):
         promotion_reason: str,
         performance_metrics: Optional[Dict[str, Any]] = None,
         set_as_default: bool = True,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.experiment_name = experiment_name
@@ -906,46 +831,40 @@ class WorkflowPromotionOperator(BaseOperator):
         self.set_as_default = set_as_default
 
         # Get base URL from Airflow Variables
-        self.base_url = Variable.get(
-            "image_processor_base_url",
-            "http://image-processor-service:8080"
-        )
+        self.base_url = Variable.get("image_processor_base_url", "http://image-processor-service:8080")
 
     def execute(self, context: Dict) -> Dict[str, Any]:
         """Execute workflow promotion."""
-        logger.info(f"Promoting experimental workflow {self.experiment_name} to production {self.new_production_version}")
+        logger.info(
+            f"Promoting experimental workflow {self.experiment_name} to production {self.new_production_version}"
+        )
 
         url = f"{self.base_url}/api/v1/workflows/experimental/{self.experiment_name}/promote"
 
         payload = {
-            'newProductionVersion': self.new_production_version,
-            'activatedBy': self.promoted_by,
-            'reason': self.promotion_reason,
-            'performanceMetrics': self.performance_metrics,
-            'setAsDefault': self.set_as_default
+            "newProductionVersion": self.new_production_version,
+            "activatedBy": self.promoted_by,
+            "reason": self.promotion_reason,
+            "performanceMetrics": self.performance_metrics,
+            "setAsDefault": self.set_as_default,
         }
 
         try:
-            response = requests.post(
-                url,
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=60
-            )
+            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
             response.raise_for_status()
 
             promotion_result = response.json()
 
             # Store promotion details in XCom
-            context['ti'].xcom_push(
-                key='workflow_promotion',
+            context["ti"].xcom_push(
+                key="workflow_promotion",
                 value={
-                    'experimentName': self.experiment_name,
-                    'newProductionVersion': self.new_production_version,
-                    'promotedBy': self.promoted_by,
-                    'promotionTime': context['ts'],
-                    'result': promotion_result
-                }
+                    "experimentName": self.experiment_name,
+                    "newProductionVersion": self.new_production_version,
+                    "promotedBy": self.promoted_by,
+                    "promotionTime": context["ts"],
+                    "result": promotion_result,
+                },
             )
 
             logger.info(f"Workflow promotion completed successfully: {promotion_result.get('workflowVersion')}")
