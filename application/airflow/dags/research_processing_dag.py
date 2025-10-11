@@ -8,25 +8,20 @@ Author: STScI Demo Project - Phase 3 Implementation
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
-from airflow.providers.http.operators.http import SimpleHttpOperator
-from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
-from airflow.operators.dummy import DummyOperator
 from airflow.utils.dates import days_ago
 from airflow.utils.task_group import TaskGroup
 from airflow.models import Variable
 from airflow.exceptions import AirflowException
 from airflow.utils.trigger_rule import TriggerRule
 
-import boto3
 import json
 import logging
 import requests
-from urllib.parse import urljoin
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -280,12 +275,7 @@ def finalize_research_results(**context) -> Dict[str, Any]:
 
     if final_bucket:
         # Call intermediate storage service to move final result
-        move_request = {
-            "intermediateResultPath": final_image_path,
-            "finalBucket": final_bucket,
-            "finalPath": f"research/{workflow_context['session_id']}/final_result.fits",
-        }
-
+        # (move_request would be used for API call in production)
         try:
             # This would call the IntermediateStorageService.moveFinalResult method
             # For now, we'll just log the intent

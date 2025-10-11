@@ -8,7 +8,6 @@ Author: STScI Demo Project - Phase 3 Implementation
 """
 
 from typing import Dict, Any, List, Optional, Sequence
-import json
 import logging
 import requests
 from datetime import timedelta
@@ -16,9 +15,6 @@ from datetime import timedelta
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.exceptions import AirflowException
-from airflow.hooks.http_hook import HttpHook
-from airflow.providers.http.operators.http import SimpleHttpOperator
-from airflow.configuration import conf
 from airflow.models import Variable
 
 logger = logging.getLogger(__name__)
@@ -237,7 +233,7 @@ class GranularProcessingOperator(BaseOperator):
                 try:
                     error_detail = e.response.json()
                     logger.error(f"Error details: {error_detail}")
-                except:
+                except Exception:
                     logger.error(f"Response text: {e.response.text}")
             raise AirflowException(f"Failed to execute {endpoint}: {e}")
 

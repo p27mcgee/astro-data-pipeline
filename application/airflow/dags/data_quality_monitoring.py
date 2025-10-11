@@ -9,25 +9,19 @@ Author: STScI Demo Project
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import Dict, List
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator, BranchPythonOperator
-from airflow.operators.bash import BashOperator
-from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.providers.http.sensors.http import HttpSensor
 from airflow.operators.email import EmailOperator
 from airflow.operators.dummy import DummyOperator
 from airflow.utils.dates import days_ago
 from airflow.utils.task_group import TaskGroup
 from airflow.models import Variable
-from airflow.exceptions import AirflowException
 
 import boto3
-import json
 import logging
-import pandas as pd
 from dataclasses import dataclass
 
 # Default arguments
@@ -130,14 +124,14 @@ def analyze_processing_performance(**context) -> List[QualityMetric]:
 
     # Query processing job statistics for last 24 hours
     sql = """
-    SELECT 
+    SELECT
         COUNT(*) as total_jobs,
         COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as completed_jobs,
         COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failed_jobs,
         AVG(EXTRACT(EPOCH FROM (completed_at - started_at))/3600.0) as avg_processing_hours,
         MAX(EXTRACT(EPOCH FROM (completed_at - started_at))/3600.0) as max_processing_hours,
         COUNT(CASE WHEN retry_count > 0 THEN 1 END) as jobs_with_retries
-    FROM processing_jobs 
+    FROM processing_jobs
     WHERE created_at >= NOW() - INTERVAL '24 hours'
     """
 
@@ -234,7 +228,7 @@ def analyze_catalog_quality(**context) -> List[QualityMetric]:
     try:
         # Check catalog growth rate
         growth_sql = """
-        SELECT 
+        SELECT
             COUNT(*) as total_objects,
             COUNT(CASE WHEN created_at >= NOW() - INTERVAL '1 hour' THEN 1 END) as recent_objects,
             COUNT(DISTINCT object_type) as object_types,
@@ -258,13 +252,14 @@ def analyze_catalog_quality(**context) -> List[QualityMetric]:
                 )
             )
 
+            completeness_pct = ((total_objects - no_magnitude) / total_objects * 100) if total_objects > 0 else 0
             metrics.append(
                 QualityMetric(
                     name="catalog_completeness",
                     value=1 - (no_magnitude / total_objects) if total_objects > 0 else 0,
                     threshold=0.8,
                     status="PASS" if (no_magnitude / total_objects if total_objects > 0 else 1) <= 0.2 else "WARNING",
-                    description=f"{((total_objects - no_magnitude) / total_objects * 100) if total_objects > 0 else 0:.1f}% objects have magnitude measurements",
+                    description=f"{completeness_pct:.1f}% objects have magnitude measurements",
                 )
             )
 
@@ -297,11 +292,11 @@ def analyze_catalog_quality(**context) -> List[QualityMetric]:
 
         # Check coordinate validity
         coord_sql = """
-        SELECT 
+        SELECT
             COUNT(CASE WHEN ra < 0 OR ra >= 360 THEN 1 END) as invalid_ra,
             COUNT(CASE WHEN dec < -90 OR dec > 90 THEN 1 END) as invalid_dec,
             COUNT(*) as total_with_coords
-        FROM astronomical_objects 
+        FROM astronomical_objects
         WHERE ra IS NOT NULL AND dec IS NOT NULL
         """
 
@@ -362,22 +357,16 @@ def check_data_consistency(**context) -> List[QualityMetric]:
     metrics = []
 
     try:
-        # Check if completed jobs have corresponding catalog entries
-        consistency_sql = """
-        SELECT 
-            COUNT(CASE WHEN pj.status = 'COMPLETED' THEN 1 END) as completed_jobs,
-            COUNT(CASE WHEN pj.status = 'COMPLETED' AND ao.id IS NOT NULL THEN 1 END) as jobs_with_catalog_data
-        FROM processing_jobs pj
-        LEFT JOIN detections d ON pj.job_id = d.processing_job_id
-        LEFT JOIN astronomical_objects ao ON d.object_id = ao.id
-        WHERE pj.completed_at >= NOW() - INTERVAL '24 hours'
-        """
+        # This is a simplified consistency check - in reality, the join would be more complex
+        # For demo purposes, we'll check basic consistency between processing and catalog
 
-        # This is a simplified check - in reality, the join would be more complex
-        # For demo purposes, we'll check basic consistency
-
-        processing_count_sql = "SELECT COUNT(*) FROM processing_jobs WHERE status = 'COMPLETED' AND completed_at >= NOW() - INTERVAL '24 hours'"
-        catalog_count_sql = "SELECT COUNT(*) FROM astronomical_objects WHERE created_at >= NOW() - INTERVAL '24 hours'"
+        processing_count_sql = (
+            "SELECT COUNT(*) FROM processing_jobs WHERE status = 'COMPLETED' "
+            "AND completed_at >= NOW() - INTERVAL '24 hours'"
+        )
+        catalog_count_sql = (
+            "SELECT COUNT(*) FROM astronomical_objects " "WHERE created_at >= NOW() - INTERVAL '24 hours'"
+        )
 
         processing_count = processing_hook.get_first(processing_count_sql)[0]
         catalog_count = catalog_hook.get_first(catalog_count_sql)[0]
@@ -388,13 +377,17 @@ def check_data_consistency(**context) -> List[QualityMetric]:
 
         consistency_ratio = catalog_count / expected_objects if expected_objects > 0 else 0
 
+        desc = (
+            f"{catalog_count} catalog objects from {processing_count} completed jobs "
+            f"(ratio: {consistency_ratio:.2f})"
+        )
         metrics.append(
             QualityMetric(
                 name="processing_catalog_consistency",
                 value=consistency_ratio,
                 threshold=0.5,  # At least 50% of expected objects
                 status="PASS" if consistency_ratio >= 0.5 else "WARNING",
-                description=f"{catalog_count} catalog objects from {processing_count} completed jobs (ratio: {consistency_ratio:.2f})",
+                description=desc,
             )
         )
 
@@ -486,13 +479,13 @@ def generate_quality_report(**context) -> str:
 
     report = f"""
 Data Quality Report - {context['ds']}
-{'='*50}
+{'=' * 50}
 
 Overall Status: {quality_summary['overall_status']}
 Execution Time: {datetime.now().isoformat()}
 
 Service Health:
-{'-'*20}
+{'-' * 20}
 """
 
     for service, status in service_health.items():
@@ -501,14 +494,14 @@ Service Health:
 
     report += f"""
 Quality Metrics Summary:
-{'-'*25}
+{'-' * 25}
   Total Checks: {quality_summary['total_metrics']}
   Critical Issues: {quality_summary['critical_issues']}
   Warnings: {quality_summary['warnings']}
   Passing: {quality_summary['passing_checks']}
 
 Detailed Metrics:
-{'-'*20}
+{'-' * 20}
 """
 
     for metric in quality_summary["metrics"]:
@@ -583,7 +576,8 @@ critical_alert = EmailOperator(
     <h2 style="color: red;">CRITICAL Data Quality Alert</h2>
     <p>Critical data quality issues have been detected in the astronomical data pipeline.</p>
     <p><strong>Execution Date:</strong> {{ ds }}</p>
-    <p><strong>Issues:</strong> {{ task_instance.xcom_pull(key='quality_summary')['critical_issues'] }} critical issues found</p>
+    <p><strong>Issues:</strong>
+    {{ task_instance.xcom_pull(key='quality_summary')['critical_issues'] }} critical issues found</p>
     <p>Please investigate immediately and check the detailed quality report.</p>
     """,
     dag=dag,

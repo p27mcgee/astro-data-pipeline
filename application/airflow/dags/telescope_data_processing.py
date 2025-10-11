@@ -8,16 +8,11 @@ Author: STScI Demo Project
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Any
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.bash import BashOperator
 from airflow.providers.postgres.operators.postgres import PostgresOperator
-from airflow.providers.http.operators.http import SimpleHttpOperator
-from airflow.providers.amazon.aws.operators.s3 import S3CreateObjectOperator, S3DeleteObjectOperator
-from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
-from airflow.providers.kubernetes.operators.kubernetes_pod import KubernetesPodOperator
 from airflow.operators.email import EmailOperator
 from airflow.utils.dates import days_ago
 from airflow.utils.task_group import TaskGroup
@@ -25,7 +20,6 @@ from airflow.models import Variable
 from airflow.exceptions import AirflowException
 
 import boto3
-import json
 import logging
 
 # Default arguments for all tasks
@@ -424,12 +418,12 @@ quality_check_task = PostgresOperator(
     task_id="quality_check",
     postgres_conn_id="astro_catalog_db",
     sql="""
-    SELECT 
+    SELECT
         COUNT(*) as total_objects,
         COUNT(CASE WHEN object_type = 'STAR' THEN 1 END) as stars,
         COUNT(CASE WHEN object_type = 'GALAXY' THEN 1 END) as galaxies,
         AVG(magnitude) as avg_magnitude
-    FROM astronomical_objects 
+    FROM astronomical_objects
     WHERE created_at >= NOW() - INTERVAL '1 hour';
     """,
     dag=dag,

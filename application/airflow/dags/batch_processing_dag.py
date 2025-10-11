@@ -12,18 +12,14 @@ from typing import List, Dict, Any
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
-from airflow.providers.kubernetes.operators.kubernetes_pod import KubernetesPodOperator
 from airflow.providers.postgres.operators.postgres import PostgresOperator
-from airflow.sensors.filesystem import FileSensor
 from airflow.utils.dates import days_ago
 from airflow.utils.task_group import TaskGroup
-from airflow.models import Variable, XCom
+from airflow.models import Variable
 from airflow.exceptions import AirflowException
 from airflow.operators.email import EmailOperator
 
 import boto3
-import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -171,7 +167,7 @@ def create_batch_jobs(**context) -> List[Dict]:
         job_spec = {
             "batch_id": batch["batch_id"],
             "files": batch["files"],
-            "job_name": f"astro-batch-{batch['batch_id']}-{context['ds_nodash']}",
+            "job_name": f"astro-batch-{batch['batch_id']}-" f"{context['ds_nodash']}",
             "status": "CREATED",
         }
         batch_jobs.append(job_spec)
@@ -213,7 +209,7 @@ def process_batch_parallel(**context) -> Dict[str, Any]:
                 }
 
                 response = requests.post(
-                    f"{Variable.get('image_processor_url')}/api/v1/processing/jobs/s3", json=job_request, timeout=30
+                    f"{Variable.get('image_processor_url')}" f"/api/v1/processing/jobs/s3", json=job_request, timeout=30
                 )
 
                 if response.status_code == 202:
@@ -267,7 +263,9 @@ def process_batch_parallel(**context) -> Dict[str, Any]:
         "completed_batches": len(results),
         "total_files_processed": total_success,
         "total_files_failed": total_failures,
-        "success_rate": total_success / (total_success + total_failures) if (total_success + total_failures) > 0 else 0,
+        "success_rate": (
+            total_success / (total_success + total_failures) if (total_success + total_failures) > 0 else 0
+        ),
         "batch_results": results,
     }
 
@@ -313,7 +311,7 @@ def monitor_batch_completion(**context) -> Dict[str, Any]:
         for job_id in all_job_ids:
             try:
                 response = requests.get(
-                    f"{Variable.get('image_processor_url')}/api/v1/processing/jobs/{job_id}", timeout=10
+                    f"{Variable.get('image_processor_url')}" f"/api/v1/processing/jobs/{job_id}", timeout=10
                 )
 
                 if response.status_code == 200:
@@ -361,26 +359,26 @@ def generate_batch_report(**context) -> str:
     report = f"""
     Batch Processing Report
     ======================
-    
+
     Execution Date: {context['ds']}
     DAG Run ID: {context['dag_run'].run_id}
-    
+
     Data Discovery:
     - Total files found: {batch_discovery['total_files']}
     - Total data size: {batch_discovery['total_size'] / (1024**3):.2f} GB
     - Number of batches: {batch_discovery['num_batches']}
     - Batch size: {BATCH_SIZE} files per batch
-    
+
     Processing Results:
     - Files submitted: {processing_summary['total_files_processed']}
     - Files failed submission: {processing_summary['total_files_failed']}
     - Success rate: {processing_summary['success_rate']:.2%}
-    
+
     Job Completion:
     - Completed jobs: {completion_result['completed_jobs']}
     - Failed jobs: {completion_result['failed_jobs']}
     - Pending jobs: {completion_result['pending_jobs']}
-    
+
     Batch Details:
     """
 
@@ -396,7 +394,7 @@ def generate_batch_report(**context) -> str:
     # Save report to S3
     try:
         s3_client = boto3.client("s3")
-        report_key = f"reports/batch_processing/{context['ds']}/{context['dag_run'].run_id}_report.txt"
+        report_key = f"reports/batch_processing/{context['ds']}/" f"{context['dag_run'].run_id}_report.txt"
 
         s3_client.put_object(
             Bucket=S3_BUCKET_PROCESSED, Key=report_key, Body=report.encode("utf-8"), ContentType="text/plain"
@@ -445,9 +443,9 @@ cleanup_task = PostgresOperator(
     task_id="cleanup_old_jobs",
     postgres_conn_id="astro_processing_db",
     sql="""
-    UPDATE processing_jobs 
+    UPDATE processing_jobs
     SET status = 'EXPIRED'
-    WHERE status IN ('QUEUED', 'RUNNING') 
+    WHERE status IN ('QUEUED', 'RUNNING')
     AND created_at < NOW() - INTERVAL '24 hours';
     """,
     dag=dag,
@@ -457,12 +455,12 @@ validation_task = PostgresOperator(
     task_id="validate_batch_results",
     postgres_conn_id="astro_catalog_db",
     sql="""
-    SELECT 
+    SELECT
         COUNT(*) as objects_added_today,
         COUNT(DISTINCT object_type) as object_types,
         MIN(created_at) as first_object,
         MAX(created_at) as last_object
-    FROM astronomical_objects 
+    FROM astronomical_objects
     WHERE DATE(created_at) = CURRENT_DATE;
     """,
     dag=dag,

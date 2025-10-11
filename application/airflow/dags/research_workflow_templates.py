@@ -8,11 +8,9 @@ Author: STScI Demo Project - Phase 3 Implementation
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.operators.dummy import DummyOperator
 from airflow.utils.dates import days_ago
 from airflow.utils.task_group import TaskGroup
 from airflow.utils.trigger_rule import TriggerRule
