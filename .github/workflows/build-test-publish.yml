@@ -154,8 +154,10 @@ jobs:
           pip install pytest pytest-cov
           cd ../..
 
-          # Airflow Python validation tools
-          pip install flake8>=6.0.0 black>=23.0.0
+          # Airflow Python validation tools (via Make)
+          cd application/airflow
+          make install-dev
+          cd ../..
 
       - name: Make gradlew executable
         run: |
@@ -196,32 +198,17 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-      - name: Validate Airflow Python Code (flake8)
+      - name: Validate Airflow Python Code
         run: |
           cd application/airflow
-          echo "🔍 Running flake8 linting on Airflow DAGs and plugins..."
-          python -m flake8 \
-            --max-line-length=120 \
-            --exclude=venv,__pycache__,.git \
-            --ignore=E203,W503 \
-            dags plugins
+          echo "🔍 Validating Airflow DAGs and plugins..."
+          make validate
           if [ $? -ne 0 ]; then
-            echo "❌ Airflow Python code has linting issues!"
-            echo "Run './gradlew :airflow:formatPython' locally to fix"
+            echo "❌ Airflow Python validation failed!"
+            echo "Run 'make format' locally to fix formatting issues"
             exit 1
           fi
-          echo "✅ Airflow Python linting passed"
-
-      - name: Check Airflow Python Formatting (black)
-        run: |
-          cd application/airflow
-          echo "🔍 Checking Airflow Python code formatting..."
-          python -m black --check --line-length=120 dags plugins || {
-            echo "❌ Airflow Python code formatting issues detected!"
-            echo "Run './gradlew :airflow:formatPython' locally to auto-fix"
-            exit 1
-          }
-          echo "✅ Airflow Python formatting check passed"
+          echo "✅ Airflow Python validation passed"
 
       - name: Run unit tests (H2)
         run: |

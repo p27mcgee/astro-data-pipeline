@@ -1,411 +1,115 @@
 /**
- * Airflow Custom Image Build Configuration
+ * Airflow Build Configuration - DEPRECATED
  *
- * Builds a custom Apache Airflow image with:
- * - Pre-installed provider packages (AWS, Kubernetes, PostgreSQL, HTTP)
- * - Python dependencies for DAG execution (boto3, astropy, requests)
- * - Production-ready configuration
- * - Python code validation (flake8, black, pylint)
+ * ⚠️ THIS FILE IS NO LONGER USED ⚠️
+ *
+ * The airflow project has been migrated to use Make instead of Gradle.
+ * This provides a more natural Python-centric build workflow.
+ *
+ * ===========================================================================
+ * NEW BUILD SYSTEM: Use Makefile instead
+ * ===========================================================================
+ *
+ * Common commands:
+ * ----------------
+ * make help              - Show all available targets
+ * make validate          - Validate Python code (flake8 + black check)
+ * make lint              - Run flake8 linting
+ * make format            - Format code with black
+ * make test              - Run Python tests
+ * make build             - Build Docker image (includes validation)
+ * make test-image        - Test that image starts successfully
+ * make scan              - Scan image for vulnerabilities (requires trivy)
+ * make push              - Push image to registry
+ * make clean             - Clean Docker images
+ * make ci                - CI pipeline (install deps + validate)
+ * make cd                - CD pipeline (build + test image)
+ *
+ * Installation:
+ * -------------
+ * make install-dev       - Install Python development dependencies
+ *
+ * Configuration:
+ * --------------
+ * The Makefile reads version from: ../gradle.properties
+ * Override registry with: REGISTRY=myregistry make push
+ * Override version with: VERSION=1.0.0 make build
+ *
+ * ===========================================================================
+ * Why the migration from Gradle to Make?
+ * ===========================================================================
+ *
+ * 1. Natural Fit: Make is standard for Python/Docker projects
+ * 2. Simplicity: No conditional logic needed to exclude airflow from Java tasks
+ * 3. Developer Experience: Python developers understand Make + Docker workflow
+ * 4. Performance: No JVM startup overhead for Python validation
+ * 5. Community Standards: Follows Airflow project conventions
+ * 6. Clear Separation: Python uses Python tools, Java uses Java tools
+ *
+ * ===========================================================================
+ * Migration Guide
+ * ===========================================================================
+ *
+ * Old Gradle commands -> New Make commands:
+ *
+ * ./gradlew :airflow:validateDags     ->  make validate
+ * ./gradlew :airflow:lintPython       ->  make lint
+ * ./gradlew :airflow:formatPython     ->  make format
+ * ./gradlew :airflow:buildDocker      ->  make build
+ * ./gradlew :airflow:testImage        ->  make test-image
+ * ./gradlew :airflow:scanImage        ->  make scan
+ * ./gradlew :airflow:pushDocker       ->  make push
+ *
+ * ===========================================================================
+ *
+ * This file is kept for reference only. All functionality has been
+ * moved to the Makefile in this directory.
+ *
+ * See: airflow/Makefile for complete implementation
  */
 
-// Use base plugin for Docker tasks
+// Keep base plugin for Gradle compatibility
 plugins {
     id 'base'
 }
 
-// Version configuration - matches other services
+// Version configuration - still reads from gradle.properties for consistency
 version = project.findProperty('version') ?: '0.6.5-alpha.0'
 
-ext {
-    dockerRegistry = project.findProperty('dockerRegistry') ?: 'localhost:5000'
-    imageTag = project.findProperty('imageTag') ?: version
-    baseAirflowVersion = '2.7.1'
-    // Use project venv if available, otherwise system python3
-    pythonExecutable = file('../../venv/bin/python').exists() ? '../../venv/bin/python' : 'python3'
-    dagsDir = file('dags')
-    pluginsDir = file('plugins')
-}
-
-// ============================================================================
-// Docker Build Tasks
-// ============================================================================
-
-// Docker build task for local development
-tasks.register('buildDocker', Exec) {
-    description = 'Build custom Airflow Docker image for local development'
-    group = 'docker'
-    dependsOn 'validatePython'  // Validate before building
-
-    workingDir '.'
-    commandLine 'docker', 'build',
-            '-t', "astro-airflow:${version}",
-            '-t', "astro-airflow:latest",
-            '--build-arg', "AIRFLOW_VERSION=${baseAirflowVersion}",
-            '.'
-
-    doFirst {
-        println "Building Airflow image: astro-airflow:${version}"
-        println "Base Airflow version: ${baseAirflowVersion}"
-    }
-}
-
-// Multi-architecture build for production (amd64/arm64)
-tasks.register('buildMultiArch', Exec) {
-    description = 'Build multi-architecture Airflow image for production'
-    group = 'docker'
-    dependsOn 'validatePython'
-
-    workingDir '.'
-    commandLine 'docker', 'buildx', 'build',
-            '--platform', 'linux/amd64,linux/arm64',
-            '-t', "${dockerRegistry}/astro-airflow:${imageTag}",
-            '-t', "${dockerRegistry}/astro-airflow:latest",
-            '--build-arg', "AIRFLOW_VERSION=${baseAirflowVersion}",
-            '--push', '.'
-
-    doFirst {
-        println "Building multi-arch Airflow image: ${dockerRegistry}/astro-airflow:${imageTag}"
-    }
-}
-
-// Tag and push to registry
-tasks.register('pushDocker', Exec) {
-    description = 'Push Airflow image to container registry'
-    group = 'docker'
-    dependsOn buildDocker
-
-    workingDir '.'
-    commandLine 'docker', 'push', "${dockerRegistry}/astro-airflow:${imageTag}"
-
-    doFirst {
-        println "Pushing image: ${dockerRegistry}/astro-airflow:${imageTag}"
-    }
-}
-
-// Validate Docker build without caching (for CI)
-tasks.register('buildDockerNoCache', Exec) {
-    description = 'Build Airflow image without cache (for CI/CD)'
-    group = 'docker'
-    dependsOn 'validatePython'
-
-    workingDir '.'
-    commandLine 'docker', 'build',
-            '--no-cache',
-            '-t', "astro-airflow:${version}",
-            '--build-arg', "AIRFLOW_VERSION=${baseAirflowVersion}",
-            '.'
-}
-
-// Scan image for vulnerabilities (requires Trivy)
-tasks.register('scanImage', Exec) {
-    description = 'Scan Airflow image for security vulnerabilities'
-    group = 'verification'
-    dependsOn buildDocker
-
-    commandLine 'trivy', 'image',
-            '--severity', 'HIGH,CRITICAL',
-            '--exit-code', '1',
-            "astro-airflow:${version}"
-
-    ignoreExitValue = true
-
-    doFirst {
-        println "Scanning image for vulnerabilities: astro-airflow:${version}"
-    }
-}
-
-// Validate requirements.txt (check for outdated packages)
-tasks.register('checkDependencies', Exec) {
-    description = 'Check Airflow Python dependencies for updates'
-    group = 'verification'
-
-    commandLine 'docker', 'run', '--rm',
-            "astro-airflow:${version}",
-            'pip', 'list', '--outdated'
-
-    ignoreExitValue = true
-}
-
-// Test image can start successfully
-tasks.register('testImage', Exec) {
-    description = 'Test that Airflow image starts successfully'
-    group = 'verification'
-    dependsOn buildDocker
-
-    commandLine 'docker', 'run', '--rm',
-            "astro-airflow:${version}",
-            'airflow', 'version'
-
-    doFirst {
-        println "Testing Airflow image startup..."
-    }
-}
-
-// Clean Docker artifacts
-tasks.register('cleanDocker', Exec) {
-    description = 'Remove Airflow Docker images'
-    group = 'docker'
-
-    commandLine 'docker', 'rmi', '-f',
-            "astro-airflow:${version}",
-            "astro-airflow:latest"
-
-    ignoreExitValue = true
-}
-
-// ============================================================================
-// Python Validation Tasks
-// ============================================================================
-
-// Install Python dev dependencies (flake8, pylint, black, mypy)
-tasks.register('installPythonDevDeps', Exec) {
-    description = 'Install Python development dependencies'
-    group = 'setup'
-
-    commandLine pythonExecutable, '-m', 'pip', 'install',
-        'flake8>=6.0.0',           // Linting
-        'pylint>=2.17.0',          // Static analysis
-        'black>=23.0.0',           // Code formatting
-        'mypy>=1.4.0',             // Type checking
-        'pytest>=7.4.0',           // Testing framework
-        'pytest-airflow>=0.0.4'    // Airflow DAG testing
-
-    ignoreExitValue = true
-
-    doFirst {
-        println "Installing Python development tools..."
-    }
-}
-
-// Lint Python code with flake8
-tasks.register('lintPython', Exec) {
-    description = 'Lint Python code with flake8'
-    group = 'verification'
-
-    commandLine pythonExecutable, '-m', 'flake8',
-        '--max-line-length=120',
-        '--exclude=venv,__pycache__,.git',
-        '--ignore=E203,W503',  // Black compatibility
-        dagsDir, pluginsDir
-
-    ignoreExitValue = false
-
-    doFirst {
-        println "Running flake8 linting on DAGs and plugins..."
-    }
-}
-
-// Static analysis with pylint
-tasks.register('analyzePython', Exec) {
-    description = 'Static analysis with pylint'
-    group = 'verification'
-
-    commandLine pythonExecutable, '-m', 'pylint',
-        '--max-line-length=120',
-        '--disable=C0111,R0903,W0511',  // Disable docstring, too-few-public-methods, fixme
-        dagsDir, pluginsDir
-
-    ignoreExitValue = true  // Non-zero exit doesn't fail build
-
-    doFirst {
-        println "Running pylint static analysis..."
-    }
-}
-
-// Check code formatting with black
-tasks.register('checkFormat', Exec) {
-    description = 'Check Python code formatting with black'
-    group = 'verification'
-
-    commandLine pythonExecutable, '-m', 'black',
-        '--check',
-        '--line-length=120',
-        dagsDir, pluginsDir
-
-    ignoreExitValue = true  // Just warn, don't fail build
-
-    doFirst {
-        println "Checking Python code formatting..."
-    }
-}
-
-// Format Python code with black
-tasks.register('formatPython', Exec) {
-    description = 'Format Python code with black'
-    group = 'build'
-
-    commandLine pythonExecutable, '-m', 'black',
-        '--line-length=120',
-        dagsDir, pluginsDir
-
-    doFirst {
-        println "Formatting Python code with black..."
-    }
-}
-
-// Type checking with mypy
-tasks.register('typeCheck', Exec) {
-    description = 'Type check Python code with mypy'
-    group = 'verification'
-
-    commandLine pythonExecutable, '-m', 'mypy',
-        '--ignore-missing-imports',
-        '--follow-imports=skip',
-        dagsDir, pluginsDir
-
-    ignoreExitValue = true
-
-    doFirst {
-        println "Running mypy type checking..."
-    }
-}
-
-// Validate DAG syntax (no import errors)
-tasks.register('validateDags', Exec) {
-    description = 'Validate Airflow DAG syntax'
-    group = 'verification'
-    dependsOn buildDocker
-
-    commandLine 'docker', 'run', '--rm',
-        '-v', "${dagsDir.absolutePath}:/opt/airflow/dags",
-        "astro-airflow:${version}",
-        'python', '-c', '''
-import sys
-from pathlib import Path
-sys.path.insert(0, "/opt/airflow/dags")
-for dag_file in Path("/opt/airflow/dags").glob("*.py"):
-    print(f"Validating {dag_file.name}...")
-    try:
-        exec(open(dag_file).read())
-        print(f"✓ {dag_file.name} valid")
-    except Exception as e:
-        print(f"✗ {dag_file.name} failed: {e}")
-        sys.exit(1)
-'''
-
-    ignoreExitValue = true  // DAGs may have import errors in local context
-
-    doFirst {
-        println "Validating DAG files in Docker environment..."
-    }
-}
-
-// Run Python tests
-tasks.register('testPython', Exec) {
-    description = 'Run Python tests with pytest'
-    group = 'verification'
-
-    commandLine pythonExecutable, '-m', 'pytest',
-        'tests/',
-        '--verbose',
-        '--tb=short'
-
-    ignoreExitValue = true
-
-    doFirst {
-        if (file('tests').exists()) {
-            println "Running pytest tests..."
-        } else {
-            println "No tests/ directory found, skipping..."
-        }
-    }
-}
-
-// Combined validation task
-tasks.register('validatePython') {
-    description = 'Run all Python validation checks'
-    group = 'verification'
-
-    dependsOn lintPython, checkFormat
-
-    doFirst {
-        println """
-        ========================================
-        Running Python validation:
-        ========================================
-        - Linting (flake8)
-        - Format checking (black)
-        ========================================
-        """.stripIndent()
-    }
-}
-
-// Full check including optional tasks
-tasks.register('checkAll') {
-    description = 'Run all checks including optional static analysis'
-    group = 'verification'
-
-    dependsOn validatePython, analyzePython, typeCheck
-}
-
-// ============================================================================
-// Help and Documentation
-// ============================================================================
-
-// Default build task
-defaultTasks 'buildDocker'
-
-// Documentation task
-tasks.register('airflowHelp') {
-    description = 'Show all available Airflow tasks'
-    group = 'help'
+// Show deprecation warning
+tasks.register('deprecated') {
+    description = '⚠️ This Gradle build is deprecated - use Makefile instead'
+    group = 'deprecated'
 
     doLast {
         println """
-        ========================================
-        Airflow Build & Validation Tasks
-        ========================================
+        ================================================================================
+        ⚠️  WARNING: Gradle tasks for airflow are deprecated
+        ================================================================================
 
-        Docker Tasks:
-        -------------
-        buildDocker        - Build custom Airflow image (includes Python validation)
-        buildMultiArch     - Build multi-architecture image for production
-        pushDocker         - Push image to container registry
-        buildDockerNoCache - Build without cache (for CI/CD)
-        scanImage          - Security vulnerability scan (requires Trivy)
-        testImage          - Verify image starts successfully
-        checkDependencies  - Check for outdated Python packages
-        cleanDocker        - Remove Docker images
+        The airflow project now uses Make for builds.
 
-        Python Validation:
-        ------------------
-        validatePython     - Run core validation (lint + format check)
-        lintPython         - Lint with flake8
-        checkFormat        - Check formatting with black
-        formatPython       - Auto-format code with black
-        validateDags       - Check DAG syntax in Docker (after build)
-        analyzePython      - Static analysis with pylint (optional)
-        typeCheck          - Type checking with mypy (optional)
-        testPython         - Run pytest tests (if tests/ exists)
-        checkAll           - Run all checks including optional
+        Quick Start:
+        ------------
+        cd airflow
+        make help       # Show all available commands
+        make validate   # Validate Python code
+        make build      # Build Docker image
 
-        Setup:
-        ------
-        installPythonDevDeps - Install Python dev tools (flake8, black, etc.)
-
-        Configuration:
-        ==============
-        version            - Image version (current: ${version})
-        dockerRegistry     - Registry URL (current: ${dockerRegistry})
-        imageTag           - Image tag (current: ${imageTag})
-        baseAirflowVersion - Base Airflow version (current: ${baseAirflowVersion})
-
-        Examples:
-        =========
-        # Validate Python code
-        ./gradlew :airflow:validatePython
-
-        # Build image (auto-validates Python first)
-        ./gradlew :airflow:buildDocker
-
-        # Format code and build
-        ./gradlew :airflow:formatPython :airflow:buildDocker
-
-        # Run all checks
-        ./gradlew :airflow:checkAll
-
-        # Build for production with custom version
-        ./gradlew :airflow:buildMultiArch -PdockerRegistry=ghcr.io/myorg -PimageTag=1.0.0
+        For full documentation, see: airflow/Makefile
+        ================================================================================
         """.stripIndent()
     }
 }
+
+// Override common tasks to show deprecation message
+['buildDocker', 'validateDags', 'lintPython', 'formatPython', 'buildMultiArch', 'pushDocker'].each { taskName ->
+    tasks.register(taskName) {
+        description = "⚠️ Deprecated - use 'make' instead"
+        group = 'deprecated'
+        dependsOn 'deprecated'
+    }
+}
+
+// Default task shows deprecation
+defaultTasks 'deprecated'

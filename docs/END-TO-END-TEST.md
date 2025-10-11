@@ -16,7 +16,8 @@ Catalog Population → Query Results
 - Python 3.11+ with astropy installed
 - AWS CLI for LocalStack S3 access
 - `jq` for JSON parsing (optional but recommended)
-- Gradle 8.x (for building services and Airflow image)
+- Gradle 8.x (for building Java services)
+- Make (for building Airflow image)
 
 ## Authentication
 
@@ -36,14 +37,17 @@ These credentials are configured in `application.yml` for both services:
 
 ```bash
 # From project root
-cd application
+cd application/airflow
 
 # Build custom Airflow image with required providers (includes Python validation)
-./gradlew :airflow:buildDocker
+make build
 
 # This creates: astro-airflow:0.6.5-alpha.0
 # Includes: AWS, Kubernetes, PostgreSQL, HTTP providers + astropy
 # Validates Python code with flake8 and black before building
+
+# Return to project root
+cd ../..
 ```
 
 ### Step 2: Build Spring Boot Service Images
@@ -368,8 +372,12 @@ set -e
 
 echo "🚀 Starting End-to-End System Test"
 
-# Build services
-echo "📦 Building services..."
+# Build Airflow
+echo "📦 Building Airflow..."
+cd application/airflow && make build && cd ../..
+
+# Build Java services
+echo "📦 Building Java services..."
 cd application && ./gradlew clean build && cd ..
 
 # Start system

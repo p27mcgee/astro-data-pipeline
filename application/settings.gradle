@@ -2,4 +2,4 @@ rootProject.name = 'astro-data-pipeline'
 
 include 'image-processor'
 include 'catalog-service'
-include 'airflow'
+// Note: 'airflow' is now built independently using Make (see airflow/Makefile)
