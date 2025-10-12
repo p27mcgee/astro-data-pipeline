@@ -148,13 +148,67 @@ jobs:
 
       - name: Install Python dependencies
         run: |
+          # Data simulator dependencies
           cd application/data-simulator
           pip install -r requirements.txt
           pip install pytest pytest-cov
+          cd ../..
+
+          # Airflow Python validation tools (via Make)
+          cd application/airflow
+          make install-dev
+          cd ../..
 
       - name: Make gradlew executable
         run: |
           find . -name "gradlew" -exec chmod +x {} \;
+
+      - name: Run Spotless Check (Code Formatting)
+        run: |
+          cd application
+          echo "🔍 Running Spotless code formatting check..."
+          ./gradlew spotlessCheck
+          if [ $? -ne 0 ]; then
+            echo "❌ Code formatting issues detected!"
+            echo "Run './gradlew spotlessApply' locally to fix formatting"
+            exit 1
+          fi
+          echo "✅ Code formatting check passed"
+
+      - name: Run Checkstyle (Code Quality)
+        run: |
+          cd application
+          echo "🔍 Running Checkstyle analysis..."
+          ./gradlew checkstyleMain checkstyleTest
+          if [ $? -ne 0 ]; then
+            echo "❌ Checkstyle violations detected!"
+            echo "Review violations in build/reports/checkstyle/"
+            exit 1
+          fi
+          echo "✅ Checkstyle check passed"
+
+      - name: Upload Checkstyle reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: checkstyle-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            application/*/build/reports/checkstyle/*.html
+            application/*/build/reports/checkstyle/*.xml
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Validate Airflow Python Code
+        run: |
+          cd application/airflow
+          echo "🔍 Validating Airflow DAGs and plugins..."
+          make validate
+          if [ $? -ne 0 ]; then
+            echo "❌ Airflow Python validation failed!"
+            echo "Run 'make format' locally to fix formatting issues"
+            exit 1
+          fi
+          echo "✅ Airflow Python validation passed"
 
       - name: Run unit tests (H2)
         run: |
@@ -169,12 +223,12 @@ jobs:
       - name: Run integration tests (PostgreSQL)
         run: |
           cd application
-          ./gradlew integrationTest
+          ./gradlew integrationTest \
+            -Dspring.profiles.active=ci-integration \
+            -DSPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/astro_test \
+            -DSPRING_DATASOURCE_USERNAME=test_user \
+            -DSPRING_DATASOURCE_PASSWORD=test_password
         env:
-          SPRING_PROFILES_ACTIVE: ci-integration
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/astro_test
-          SPRING_DATASOURCE_USERNAME: test_user
-          SPRING_DATASOURCE_PASSWORD: test_password
           AWS_ACCESS_KEY_ID: test
           AWS_SECRET_ACCESS_KEY: test
           AWS_DEFAULT_REGION: us-east-1
@@ -208,10 +262,6 @@ jobs:
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
-      - name: Run Checkstyle
-        run: |
-          cd application && ./gradlew checkstyleMain checkstyleTest
-
       - name: Run SpotBugs
         run: |
           cd application && ./gradlew spotbugsMain spotbugsTest
@@ -239,7 +289,7 @@ jobs:
       - name: Build JAR files
         run: |
           cd application
-          ./gradlew clean build -x test
+          ./gradlew clean build -x test -x spotbugsMain -x spotbugsTest
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -308,6 +358,24 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build Airflow Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./application/airflow
+          file: ./application/airflow/Dockerfile
+          push: false
+          build-args: |
+            AIRFLOW_VERSION=2.7.1
+          tags: |
+            astro-airflow:${{ env.APP_VERSION }}
+            astro-airflow:${{ github.sha }}
+            astro-airflow:latest
+          labels: |
+            org.opencontainers.image.version=${{ env.APP_VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Create Docker Build Summary
         run: |
           if [ "$IS_PRERELEASE" = "true" ]; then
@@ -325,6 +393,7 @@ jobs:
           echo "### Images Built:" >> $GITHUB_STEP_SUMMARY
           echo "- 🖼️ **astro-image-processor**: Astronomical image processing microservice" >> $GITHUB_STEP_SUMMARY
           echo "- 📊 **astro-catalog-service**: Astronomical catalog management microservice" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 **astro-airflow**: Workflow orchestration (Apache Airflow 2.7.1)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Tags Created:" >> $GITHUB_STEP_SUMMARY
           echo "- \`$APP_VERSION\` (application version)" >> $GITHUB_STEP_SUMMARY
@@ -398,6 +467,24 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push Airflow Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./application/airflow
+          file: ./application/airflow/Dockerfile
+          push: true
+          build-args: |
+            AIRFLOW_VERSION=2.7.1
+          tags: |
+            ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-airflow:${{ env.APP_VERSION }}
+            ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-airflow:${{ github.sha }}
+            ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-airflow:latest
+          labels: |
+            org.opencontainers.image.version=${{ env.APP_VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Create Docker Publish Summary
         run: |
           echo "## Docker Publish Results" >> $GITHUB_STEP_SUMMARY
@@ -407,6 +494,7 @@ jobs:
           echo "### Published Images:" >> $GITHUB_STEP_SUMMARY
           echo "- 🖼️ **astro-image-processor**: \`${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-image-processor:$APP_VERSION\`" >> $GITHUB_STEP_SUMMARY
           echo "- 📊 **astro-catalog-service**: \`${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-catalog-service:$APP_VERSION\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 **astro-airflow**: \`${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-airflow:$APP_VERSION\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Registry Information:" >> $GITHUB_STEP_SUMMARY
           echo "- **Registry**: \`${{ vars.CONTAINER_REGISTRY }}\`" >> $GITHUB_STEP_SUMMARY
@@ -422,10 +510,12 @@ jobs:
           echo "# Use version-specific tags for production" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-image-processor:$APP_VERSION" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-catalog-service:$APP_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-airflow:$APP_VERSION" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "# Use latest for development" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-image-processor:latest" >> $GITHUB_STEP_SUMMARY
           echo "docker pull ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-catalog-service:latest" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ vars.CONTAINER_REGISTRY_PREFIX }}/astro-airflow:latest" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
   docker-publish-skipped:

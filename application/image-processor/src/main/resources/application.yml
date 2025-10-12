@@ -22,7 +22,9 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: ${JPA_DDL_AUTO:validate}
+      # For fresh deployments without existing data: use 'update' to let JPA create/update schema
+      # For production with existing data: use 'validate' and enable Flyway for schema migrations
+      ddl-auto: ${JPA_DDL_AUTO:update}
     show-sql: ${JPA_SHOW_SQL:false}
     properties:
       hibernate:
@@ -35,9 +37,15 @@ spring:
         order_updates: true
 
   flyway:
-    enabled: true
+    # Disabled by default for fresh deployments (JPA handles schema creation)
+    # Enable when you have production data to preserve: set FLYWAY_ENABLED=true and JPA_DDL_AUTO=validate
+    enabled: ${FLYWAY_ENABLED:false}
     locations: classpath:db/migration
     baseline-on-migrate: true
+    # When enabling Flyway for the first time on existing database:
+    # 1. Generate migration from current schema
+    # 2. Set baseline-version to match that migration
+    # 3. Run flyway baseline before flyway migrate
 
   servlet:
     multipart:
@@ -101,7 +109,7 @@ management:
 
 logging:
   level:
-    org.stsci.astro: ${LOG_LEVEL_APP:INFO}
+    com.mcgeecahill.astro: ${LOG_LEVEL_APP:INFO}
     org.springframework: ${LOG_LEVEL_SPRING:WARN}
     org.hibernate: ${LOG_LEVEL_HIBERNATE:WARN}
     software.amazon.awssdk: ${LOG_LEVEL_AWS:WARN}
@@ -119,13 +127,13 @@ astro:
       thread-pool-size: ${PROCESSING_THREAD_POOL_SIZE:8}
       queue-capacity: ${PROCESSING_QUEUE_CAPACITY:1000}
       job-timeout: ${PROCESSING_JOB_TIMEOUT:PT30M}
-    
+
     memory:
       max-heap-size-bytes: ${PROCESSING_MAX_HEAP_SIZE:2147483648} # 2GB
       max-image-size-bytes: ${PROCESSING_MAX_IMAGE_SIZE:524288000} # 500MB
       use-memory-mapping: ${PROCESSING_USE_MEMORY_MAPPING:true}
       buffer-pool-size: ${PROCESSING_BUFFER_POOL_SIZE:10}
-    
+
     calibration:
       enable-dark-subtraction: ${CALIBRATION_ENABLE_DARK_SUBTRACTION:true}
       enable-flat-correction: ${CALIBRATION_ENABLE_FLAT_CORRECTION:true}
@@ -138,7 +146,7 @@ astro:
       output-format: ${CALIBRATION_OUTPUT_FORMAT:FITS}
       generate-thumbnails: ${CALIBRATION_GENERATE_THUMBNAILS:true}
       thumbnail-size: ${CALIBRATION_THUMBNAIL_SIZE:512}
-    
+
     s3:
       raw-data-bucket: ${S3_RAW_DATA_BUCKET:astro-data-pipeline-raw-data-dev}
       processed-data-bucket: ${S3_PROCESSED_DATA_BUCKET:astro-data-pipeline-processed-data-dev}
@@ -157,7 +165,7 @@ astro:
       session-cleanup-delay-hours: ${STORAGE_SESSION_CLEANUP_DELAY_HOURS:24}
       max-intermediate-file-age-hours: ${STORAGE_MAX_INTERMEDIATE_FILE_AGE_HOURS:168} # 7 days
       enable-versioning: ${STORAGE_ENABLE_VERSIONING:false}
-    
+
     monitoring:
       enable-metrics: ${MONITORING_ENABLE_METRICS:true}
       enable-tracing: ${MONITORING_ENABLE_TRACING:true}
@@ -168,7 +176,6 @@ astro:
       enable-performance-profiling: ${MONITORING_ENABLE_PERFORMANCE_PROFILING:false}
 
 ---
-
 spring:
   config:
     activate:
@@ -176,7 +183,7 @@ spring:
 
 logging:
   level:
-    org.stsci.astro: DEBUG
+    com.mcgeecahill.astro: DEBUG
     org.springframework.security: DEBUG
 
 astro:
@@ -186,7 +193,6 @@ astro:
       enable-performance-profiling: true
 
 ---
-
 spring:
   config:
     activate:
@@ -196,7 +202,7 @@ spring:
     driver-class-name: org.h2.Driver
     username: sa
     password: password
-  
+
   jpa:
     hibernate:
       ddl-auto: create-drop
@@ -223,7 +229,43 @@ astro:
       enable-versioning: false
 
 ---
+spring:
+  config:
+    activate:
+      on-profile: integration-test
+  datasource:
+    url: jdbc:h2:mem:integrationtestdb_${random.uuid};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
 
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+
+  flyway:
+    enabled: false
+
+  h2:
+    console:
+      enabled: false
+
+astro:
+  processing:
+    s3:
+      raw-data-bucket: test-raw-bucket
+      processed-data-bucket: test-processed-bucket
+      intermediate-data-bucket: test-intermediate-bucket
+      archive-bucket: test-archive-bucket
+
+    storage:
+      intermediate-bucket: test-intermediate-bucket
+      processed-bucket: test-processed-bucket
+      session-cleanup-enabled: false
+
+---
 spring:
   config:
     activate:
@@ -231,7 +273,7 @@ spring:
 
 logging:
   level:
-    org.stsci.astro: INFO
+    com.mcgeecahill.astro: INFO
     org.springframework: WARN
     org.hibernate: WARN
 
@@ -240,11 +282,11 @@ astro:
     parallel:
       max-concurrent-jobs: 8
       thread-pool-size: 16
-    
+
     memory:
       max-heap-size-bytes: 4294967296 # 4GB
       max-image-size-bytes: 1073741824 # 1GB
-    
+
     s3:
       raw-data-bucket: astro-data-pipeline-raw-data-prod
       processed-data-bucket: astro-data-pipeline-processed-data-prod
@@ -259,7 +301,7 @@ astro:
       session-cleanup-delay-hours: 48
       max-intermediate-file-age-hours: 168 # 7 days
       enable-versioning: true
-    
+
     monitoring:
       enable-metrics: true
       enable-tracing: true

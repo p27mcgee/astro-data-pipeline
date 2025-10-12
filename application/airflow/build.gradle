@@ -1,0 +1,115 @@
+/**
+ * Airflow Build Configuration - DEPRECATED
+ *
+ * ⚠️ THIS FILE IS NO LONGER USED ⚠️
+ *
+ * The airflow project has been migrated to use Make instead of Gradle.
+ * This provides a more natural Python-centric build workflow.
+ *
+ * ===========================================================================
+ * NEW BUILD SYSTEM: Use Makefile instead
+ * ===========================================================================
+ *
+ * Common commands:
+ * ----------------
+ * make help              - Show all available targets
+ * make validate          - Validate Python code (flake8 + black check)
+ * make lint              - Run flake8 linting
+ * make format            - Format code with black
+ * make test              - Run Python tests
+ * make build             - Build Docker image (includes validation)
+ * make test-image        - Test that image starts successfully
+ * make scan              - Scan image for vulnerabilities (requires trivy)
+ * make push              - Push image to registry
+ * make clean             - Clean Docker images
+ * make ci                - CI pipeline (install deps + validate)
+ * make cd                - CD pipeline (build + test image)
+ *
+ * Installation:
+ * -------------
+ * make install-dev       - Install Python development dependencies
+ *
+ * Configuration:
+ * --------------
+ * The Makefile reads version from: ../gradle.properties
+ * Override registry with: REGISTRY=myregistry make push
+ * Override version with: VERSION=1.0.0 make build
+ *
+ * ===========================================================================
+ * Why the migration from Gradle to Make?
+ * ===========================================================================
+ *
+ * 1. Natural Fit: Make is standard for Python/Docker projects
+ * 2. Simplicity: No conditional logic needed to exclude airflow from Java tasks
+ * 3. Developer Experience: Python developers understand Make + Docker workflow
+ * 4. Performance: No JVM startup overhead for Python validation
+ * 5. Community Standards: Follows Airflow project conventions
+ * 6. Clear Separation: Python uses Python tools, Java uses Java tools
+ *
+ * ===========================================================================
+ * Migration Guide
+ * ===========================================================================
+ *
+ * Old Gradle commands -> New Make commands:
+ *
+ * ./gradlew :airflow:validateDags     ->  make validate
+ * ./gradlew :airflow:lintPython       ->  make lint
+ * ./gradlew :airflow:formatPython     ->  make format
+ * ./gradlew :airflow:buildDocker      ->  make build
+ * ./gradlew :airflow:testImage        ->  make test-image
+ * ./gradlew :airflow:scanImage        ->  make scan
+ * ./gradlew :airflow:pushDocker       ->  make push
+ *
+ * ===========================================================================
+ *
+ * This file is kept for reference only. All functionality has been
+ * moved to the Makefile in this directory.
+ *
+ * See: airflow/Makefile for complete implementation
+ */
+
+// Keep base plugin for Gradle compatibility
+plugins {
+    id 'base'
+}
+
+// Version configuration - still reads from gradle.properties for consistency
+version = project.findProperty('version') ?: '0.6.5-alpha.0'
+
+// Show deprecation warning
+tasks.register('deprecated') {
+    description = '⚠️ This Gradle build is deprecated - use Makefile instead'
+    group = 'deprecated'
+
+    doLast {
+        println """
+        ================================================================================
+        ⚠️  WARNING: Gradle tasks for airflow are deprecated
+        ================================================================================
+
+        The airflow project now uses Make for builds.
+
+        Quick Start:
+        ------------
+        cd airflow
+        make help       # Show all available commands
+        make validate   # Validate Python code
+        make build      # Build Docker image
+
+        For full documentation, see: airflow/Makefile
+        ================================================================================
+        """.stripIndent()
+    }
+}
+
+// Override common tasks to show deprecation message
+['buildDocker', 'validateDags', 'lintPython', 'formatPython', 'buildMultiArch', 'pushDocker'].each { taskName ->
+    tasks.register(taskName) {
+        description = "⚠️ Deprecated - use 'make' instead"
+        group = 'deprecated'
+        dependsOn 'deprecated'
+    }
+}
+
+// Default task shows deprecation
+defaultTasks 'deprecated'

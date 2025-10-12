@@ -1,0 +1,27 @@
+[MASTER]
+# No need for load-plugins=pylint_airflow since it's optional
+
+[FORMAT]
+max-line-length=120
+indent-string='    '
+
+[MESSAGES CONTROL]
+disable=
+    C0111,  # missing-docstring
+    R0903,  # too-few-public-methods
+    W0511,  # fixme (TODO comments)
+    C0103,  # invalid-name (Airflow uses snake_case for DAG IDs)
+    R0913,  # too-many-arguments (common in Airflow operators)
+    W0212   # protected-access (Airflow internals sometimes require this)
+
+[DESIGN]
+max-args=7
+max-attributes=10
+max-branches=15
+max-locals=20
+
+[BASIC]
+good-names=i,j,k,ex,Run,_,df,id
+
+[SIMILARITIES]
+min-similarity-lines=10

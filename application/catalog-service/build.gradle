@@ -7,11 +7,8 @@ dependencies {
     implementation 'org.apache.commons:commons-math3:3.6.1'
     implementation 'gov.nasa.gsfc.heasarc:nom-tam-fits:1.20.0'
 
-    // Search and Indexing
-    implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch'
-
-    // Testing
-    testImplementation "org.testcontainers:elasticsearch:${testcontainersVersion}"
+    // Caching
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 }
 
 // Application context verification tests
@@ -32,7 +29,7 @@ tasks.register('contextVerificationTest', Test) {
 }
 
 springBoot {
-    mainClass = 'org.stsci.astro.catalog.CatalogServiceApplication'
+    mainClass = 'com.mcgeecahill.astro.catalog.CatalogServiceApplication'
 }
 
 tasks.register('buildDocker', Exec) {

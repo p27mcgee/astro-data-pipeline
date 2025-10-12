@@ -33,7 +33,7 @@ RUN ./gradlew :catalog-service:dependencies --no-daemon
 COPY catalog-service/src catalog-service/src
 
 # Build application
-RUN ./gradlew :catalog-service:clean :catalog-service:build -x test --no-daemon
+RUN ./gradlew :catalog-service:clean :catalog-service:build -x test -x spotlessCheck -x spotbugsMain -x spotbugsTest --no-daemon
 
 # Production stage
 FROM eclipse-temurin:17-jre-jammy
