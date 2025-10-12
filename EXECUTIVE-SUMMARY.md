@@ -157,6 +157,12 @@ This project demonstrates **senior-level capabilities** in:
     testing in the cloud. Given the rate of progress over the first two weeks I expect to have
     functioning prototype in another week, around Oct 9.
 
+  - [Oct 11] I spent a lot more time in the past week than I anticipated doing clean-up and 
+  refactoring. It was necessary and worthwhile, but time-consuming. Most of the work I originally
+  planned has been completed, but I expect it's going to take a few more days for a functioning 
+  system deployed to AWS.
+  
+
 - **Status**:
   - [Sep 26] Infrastructure ready for trial deployment, application components implemented
 
@@ -164,12 +170,25 @@ This project demonstrates **senior-level capabilities** in:
     GitHub workflows are pretty robust. Did a lot of clean-up of
     microservices, and refactored processing pipeline to allow running one or
     more experimental calibration flows alongside of production processing.
-
+  
+  - [Oct 11] I've now got end-to-end tests reading FITS files and
+    populating the astronomical object catalog, all running in containers deployed locally
+    using docker compose with LocalStack emulating the S3 and lambda functionality of AWS.
+    GitHub pipelines are validating the Java microservices image-calibration and catalog-service,
+    and are building OCI images for them and the Airflow orchestration code, and the images
+    are being published to my Docker Hub repositories. All AWS resources have been created
+    to verify the terraform code, and the EKS and CloudWatch stuff torn back down because $.
+  
 - **Next Phase**:
 
   - [Sep 26] AWS infrastructure deployment
   - [Oct 3] Local testing of processor and catalog services with Docker Compose,
     and then Docker Desktop Kubernetes
+  - [Oct 11] I'm going to create a version of the local end-to-end tests with 
+  micro-services, Airflow, redis, etc. deployed to Docker Desktop k8s.  LocalStack and
+  PostGIS will be deployed separately using docker compose to simulate the external
+  AWS resources used when the k8s deployment is to EKS. Cloud deployed functionality is
+  close.
 
 ---
 
